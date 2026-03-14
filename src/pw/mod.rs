@@ -12,8 +12,30 @@ use pipewire as pw;
 use pw::proxy::{Listener, ProxyT};
 use pw::types::ObjectType;
 
+// -- Command channel types --
+
+pub enum PwCommand {
+    CreateLink {
+        output_node: u32,
+        output_port: u32,
+        input_node: u32,
+        input_port: u32,
+        reply: tokio::sync::oneshot::Sender<Result<u32, String>>,
+    },
+    DestroyLink {
+        id: u32,
+        reply: tokio::sync::oneshot::Sender<Result<(), String>>,
+    },
+    SetNodeProps {
+        id: u32,
+        props: HashMap<String, String>,
+        reply: tokio::sync::oneshot::Sender<Result<(), String>>,
+    },
+}
+
 pub struct PwHandle {
     pub state: Arc<RwLock<PwState>>,
+    pub cmd_tx: pw::channel::Sender<PwCommand>,
     #[allow(dead_code)]
     pub join_handle: JoinHandle<()>,
 }
@@ -22,11 +44,17 @@ pub fn spawn_pw_thread() -> PwHandle {
     let state = Arc::new(RwLock::new(PwState::default()));
     let state_clone = state.clone();
 
+    let (cmd_tx, cmd_rx) = pw::channel::channel::<PwCommand>();
+
     let join_handle = std::thread::spawn(move || {
-        run_pw_loop(state_clone);
+        run_pw_loop(state_clone, cmd_rx);
     });
 
-    PwHandle { state, join_handle }
+    PwHandle {
+        state,
+        cmd_tx,
+        join_handle,
+    }
 }
 
 struct Proxies {
@@ -48,13 +76,18 @@ impl Proxies {
         self.listeners.entry(proxy_id).or_default().push(listener);
     }
 
+    fn add_proxy_only(&mut self, proxy_t: Box<dyn ProxyT>) {
+        let proxy_id = proxy_t.upcast_ref().id();
+        self.proxies_t.insert(proxy_id, proxy_t);
+    }
+
     fn remove(&mut self, proxy_id: u32) {
         self.proxies_t.remove(&proxy_id);
         self.listeners.remove(&proxy_id);
     }
 }
 
-fn run_pw_loop(state: Arc<RwLock<PwState>>) {
+fn run_pw_loop(state: Arc<RwLock<PwState>>, cmd_rx: pw::channel::Receiver<PwCommand>) {
     pw::init();
 
     let mainloop = pw::main_loop::MainLoopRc::new(None).expect("failed to create PW MainLoop");
@@ -66,6 +99,15 @@ fn run_pw_loop(state: Arc<RwLock<PwState>>) {
     let registry_weak = registry.downgrade();
     let proxies: Rc<RefCell<Proxies>> = Rc::new(RefCell::new(Proxies::new()));
 
+    // -- Command receiver --
+    let core_for_cmd = core.clone();
+    let registry_for_cmd = registry.clone();
+    let proxies_for_cmd = proxies.clone();
+    let _cmd_receiver = cmd_rx.attach(mainloop.loop_(), move |cmd| {
+        handle_command(cmd, &core_for_cmd, &registry_for_cmd, &proxies_for_cmd);
+    });
+
+    // -- Registry listener --
     let state_remove = state.clone();
     let proxies_remove = proxies.clone();
 
@@ -103,6 +145,66 @@ fn run_pw_loop(state: Arc<RwLock<PwState>>) {
     mainloop.run();
 }
 
+fn handle_command(
+    cmd: PwCommand,
+    core: &pw::core::CoreRc,
+    registry: &pw::registry::RegistryRc,
+    proxies: &Rc<RefCell<Proxies>>,
+) {
+    match cmd {
+        PwCommand::CreateLink {
+            output_node,
+            output_port,
+            input_node,
+            input_port,
+            reply,
+        } => {
+            let props = pw::properties::properties! {
+                "link.output.node" => output_node.to_string(),
+                "link.output.port" => output_port.to_string(),
+                "link.input.node" => input_node.to_string(),
+                "link.input.port" => input_port.to_string(),
+                "object.linger" => "true"
+            };
+            match core.create_object::<pw::link::Link>("link-factory", &props) {
+                Ok(link) => {
+                    let id = link.upcast_ref().id();
+                    // Keep the proxy alive so the link persists
+                    proxies.borrow_mut().add_proxy_only(Box::new(link));
+                    let _ = reply.send(Ok(id));
+                }
+                Err(e) => {
+                    let _ = reply.send(Err(format!("create_object failed: {e}")));
+                }
+            }
+        }
+        PwCommand::DestroyLink { id, reply } => {
+            let result = registry.destroy_global(id);
+            match result.into_result() {
+                Ok(_) => {
+                    proxies.borrow_mut().remove(id);
+                    let _ = reply.send(Ok(()));
+                }
+                Err(e) => {
+                    let _ = reply.send(Err(format!("destroy_global failed: {e}")));
+                }
+            }
+        }
+        PwCommand::SetNodeProps { id, props, reply } => {
+            // Set properties on a node via metadata
+            // For now, we update the props in our snapshot state and log
+            // True property setting requires the metadata interface or node.set_param
+            // which isn't well-supported in pipewire-rs for arbitrary props.
+            // We'll report this limitation honestly.
+            let _ = reply.send(Err(format!(
+                "set_node_props for node {id} with {} props: not yet implemented \
+                 (requires PipeWire metadata interface)",
+                props.len()
+            )));
+        }
+    }
+}
+
 type DictRef = pw::spa::utils::dict::DictRef;
 
 fn bind_node(
@@ -112,7 +214,6 @@ fn bind_node(
 ) -> Option<(Box<dyn ProxyT>, Box<dyn Listener>)> {
     let id = obj.id;
 
-    // Insert initial snapshot from global props
     let initial_props = obj.props.map(dict_to_map).unwrap_or_default();
     {
         let mut st = state.write().unwrap();

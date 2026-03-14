@@ -127,3 +127,76 @@ pub fn read_mixer(card_index: i32) -> Result<Vec<MixerElement>> {
 
     Ok(elements)
 }
+
+fn parse_channel(name: &str) -> alsa::mixer::SelemChannelId {
+    match name {
+        "front-left" => alsa::mixer::SelemChannelId::FrontLeft,
+        "front-right" => alsa::mixer::SelemChannelId::FrontRight,
+        "rear-left" => alsa::mixer::SelemChannelId::RearLeft,
+        "rear-right" => alsa::mixer::SelemChannelId::RearRight,
+        "front-center" => alsa::mixer::SelemChannelId::FrontCenter,
+        "woofer" => alsa::mixer::SelemChannelId::Woofer,
+        "side-left" => alsa::mixer::SelemChannelId::SideLeft,
+        "side-right" => alsa::mixer::SelemChannelId::SideRight,
+        "rear-center" => alsa::mixer::SelemChannelId::RearCenter,
+        _ => alsa::mixer::SelemChannelId::mono(),
+    }
+}
+
+pub fn set_volume(
+    card_index: i32,
+    element_name: &str,
+    volume: i64,
+    channel: Option<&str>,
+) -> Result<()> {
+    let card_name = format!("hw:{card_index}");
+    let mixer = alsa::Mixer::new(&card_name, false)?;
+    let id = alsa::mixer::SelemId::new(element_name, 0);
+    let selem = mixer
+        .find_selem(&id)
+        .ok_or_else(|| anyhow::anyhow!("element '{element_name}' not found"))?;
+
+    anyhow::ensure!(selem.has_playback_volume(), "element has no playback volume");
+
+    match channel {
+        Some(ch_name) => {
+            let ch = parse_channel(ch_name);
+            selem.set_playback_volume(ch, volume)?;
+        }
+        None => {
+            selem.set_playback_volume_all(volume)?;
+        }
+    }
+    Ok(())
+}
+
+pub fn set_switch(
+    card_index: i32,
+    element_name: &str,
+    on: bool,
+    channel: Option<&str>,
+) -> Result<()> {
+    let card_name = format!("hw:{card_index}");
+    let mixer = alsa::Mixer::new(&card_name, false)?;
+    let id = alsa::mixer::SelemId::new(element_name, 0);
+    let selem = mixer
+        .find_selem(&id)
+        .ok_or_else(|| anyhow::anyhow!("element '{element_name}' not found"))?;
+
+    anyhow::ensure!(
+        selem.has_playback_switch(),
+        "element has no playback switch"
+    );
+
+    let val = if on { 1 } else { 0 };
+    match channel {
+        Some(ch_name) => {
+            let ch = parse_channel(ch_name);
+            selem.set_playback_switch(ch, val)?;
+        }
+        None => {
+            selem.set_playback_switch_all(val)?;
+        }
+    }
+    Ok(())
+}

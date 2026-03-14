@@ -20,7 +20,7 @@ async fn main() -> anyhow::Result<()> {
     // Brief pause to let PW state populate
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-    let server = server::PawlsaServer::new(pw_handle.state);
+    let server = server::PawlsaServer::new(pw_handle.state, pw_handle.cmd_tx);
     let service = server.serve(rmcp::transport::stdio()).await?;
 
     tracing::info!("pawlsa-mcp serving on stdio");
