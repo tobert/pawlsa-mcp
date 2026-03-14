@@ -184,8 +184,7 @@ fn handle_command(
                     let _ = reply.send(Err(format!("destroy_global failed: {e}")));
                 }
             }
-        }
-        // Future: SetNodeProps via PipeWire metadata interface
+        } // Future: SetNodeProps via PipeWire metadata interface
     }
 }
 
@@ -206,8 +205,6 @@ fn bind_node(
             PwNodeSnapshot {
                 id,
                 state: "unknown".to_string(),
-                max_input_ports: 0,
-                max_output_ports: 0,
                 n_input_ports: 0,
                 n_output_ports: 0,
                 props: initial_props,
@@ -235,8 +232,6 @@ fn bind_node(
                 PwNodeSnapshot {
                     id,
                     state: node_state,
-                    max_input_ports: info.max_input_ports(),
-                    max_output_ports: info.max_output_ports(),
                     n_input_ports: info.n_input_ports(),
                     n_output_ports: info.n_output_ports(),
                     props,
@@ -334,7 +329,6 @@ fn bind_link(
                 input_node_id: parse_prop("link.input.node"),
                 input_port_id: parse_prop("link.input.port"),
                 state: "unknown".to_string(),
-                props: initial_props,
             },
         );
     }
@@ -354,7 +348,6 @@ fn bind_link(
                 pw::link::LinkState::Paused => "paused".to_string(),
                 pw::link::LinkState::Active => "active".to_string(),
             };
-            let props = info.props().map(dict_to_map).unwrap_or_default();
             let mut st = state.write().unwrap();
             st.links.insert(
                 id,
@@ -365,7 +358,6 @@ fn bind_link(
                     input_node_id: info.input_node_id(),
                     input_port_id: info.input_port_id(),
                     state: link_state,
-                    props,
                 },
             );
         })

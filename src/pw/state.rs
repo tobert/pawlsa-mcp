@@ -13,8 +13,6 @@ pub struct PwState {
 pub struct PwNodeSnapshot {
     pub id: u32,
     pub state: String,
-    pub max_input_ports: u32,
-    pub max_output_ports: u32,
     pub n_input_ports: u32,
     pub n_output_ports: u32,
     pub props: HashMap<String, String>,
@@ -36,7 +34,6 @@ pub struct PwLinkSnapshot {
     pub input_node_id: u32,
     pub input_port_id: u32,
     pub state: String,
-    pub props: HashMap<String, String>,
 }
 
 pub fn dict_to_map(dict: &pipewire::spa::utils::dict::DictRef) -> HashMap<String, String> {
@@ -128,14 +125,7 @@ impl PwState {
     }
 
     pub fn format_links(&self) -> String {
-        let mut t = Table::new(&[
-            "id",
-            "state",
-            "out_node",
-            "out_port",
-            "in_node",
-            "in_port",
-        ]);
+        let mut t = Table::new(&["id", "state", "out_node", "out_port", "in_node", "in_port"]);
         let mut links: Vec<_> = self.links.values().collect();
         links.sort_by_key(|l| l.id);
         for l in links {

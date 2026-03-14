@@ -1,8 +1,8 @@
 use std::sync::{Arc, RwLock};
 
+use rmcp::ErrorData;
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::*;
-use rmcp::ErrorData;
 use serde_json::json;
 
 use crate::alsa;
@@ -49,9 +49,9 @@ impl PawlsaServer {
             }
             _ => {
                 if let Some(rest) = path.strip_prefix("cards/") {
-                    let index: i32 = rest.parse().map_err(|_| {
-                        ErrorData::invalid_params("invalid card index", None)
-                    })?;
+                    let index: i32 = rest
+                        .parse()
+                        .map_err(|_| ErrorData::invalid_params("invalid card index", None))?;
                     let text = alsa::cards::card_detail(index).map_err(err)?;
                     let uri = format!("pawlsa://alsa/cards/{index}");
                     Ok(ReadResourceResult {
@@ -64,9 +64,9 @@ impl PawlsaServer {
                         contents: vec![text_resource(text, uri)],
                     })
                 } else if let Some(rest) = path.strip_prefix("mixer/") {
-                    let card_index: i32 = rest.parse().map_err(|_| {
-                        ErrorData::invalid_params("invalid card index", None)
-                    })?;
+                    let card_index: i32 = rest
+                        .parse()
+                        .map_err(|_| ErrorData::invalid_params("invalid card index", None))?;
                     let text = alsa::mixer::read_mixer_formatted(card_index).map_err(err)?;
                     let uri = format!("pawlsa://alsa/mixer/{card_index}");
                     Ok(ReadResourceResult {
@@ -97,9 +97,9 @@ impl PawlsaServer {
             }),
             _ => {
                 if let Some(rest) = path.strip_prefix("nodes/") {
-                    let id: u32 = rest.parse().map_err(|_| {
-                        ErrorData::invalid_params("invalid node id", None)
-                    })?;
+                    let id: u32 = rest
+                        .parse()
+                        .map_err(|_| ErrorData::invalid_params("invalid node id", None))?;
                     let text = st.format_node(id).ok_or_else(|| {
                         ErrorData::resource_not_found(format!("pw node {id} not found"), None)
                     })?;
@@ -169,8 +169,7 @@ impl PawlsaServer {
     ) -> Result<CallToolResult, ErrorData> {
         let id = args["id"]
             .as_u64()
-            .ok_or_else(|| ErrorData::invalid_params("missing id", None))?
-            as u32;
+            .ok_or_else(|| ErrorData::invalid_params("missing id", None))? as u32;
 
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.pw_cmd
@@ -189,10 +188,7 @@ impl PawlsaServer {
         }
     }
 
-    fn tool_mixer_set_volume(
-        &self,
-        args: &serde_json::Value,
-    ) -> Result<CallToolResult, ErrorData> {
+    fn tool_mixer_set_volume(&self, args: &serde_json::Value) -> Result<CallToolResult, ErrorData> {
         let card_index = args["card_index"]
             .as_i64()
             .ok_or_else(|| ErrorData::invalid_params("missing card_index", None))?
@@ -205,9 +201,8 @@ impl PawlsaServer {
             .ok_or_else(|| ErrorData::invalid_params("missing volume", None))?;
         let channel = args.get("channel").and_then(|v| v.as_str());
 
-        alsa::mixer::set_volume(card_index, element_name, volume, channel).map_err(|e| {
-            ErrorData::internal_error(format!("set_volume: {e}"), None)
-        })?;
+        alsa::mixer::set_volume(card_index, element_name, volume, channel)
+            .map_err(|e| ErrorData::internal_error(format!("set_volume: {e}"), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Volume set: card={card_index} element={element_name} volume={volume}{}",
@@ -215,10 +210,7 @@ impl PawlsaServer {
         ))]))
     }
 
-    fn tool_mixer_set_switch(
-        &self,
-        args: &serde_json::Value,
-    ) -> Result<CallToolResult, ErrorData> {
+    fn tool_mixer_set_switch(&self, args: &serde_json::Value) -> Result<CallToolResult, ErrorData> {
         let card_index = args["card_index"]
             .as_i64()
             .ok_or_else(|| ErrorData::invalid_params("missing card_index", None))?
@@ -231,9 +223,8 @@ impl PawlsaServer {
             .ok_or_else(|| ErrorData::invalid_params("missing on", None))?;
         let channel = args.get("channel").and_then(|v| v.as_str());
 
-        alsa::mixer::set_switch(card_index, element_name, on, channel).map_err(|e| {
-            ErrorData::internal_error(format!("set_switch: {e}"), None)
-        })?;
+        alsa::mixer::set_switch(card_index, element_name, on, channel)
+            .map_err(|e| ErrorData::internal_error(format!("set_switch: {e}"), None))?;
 
         let state_str = if on { "unmuted" } else { "muted" };
         Ok(CallToolResult::success(vec![Content::text(format!(
@@ -252,6 +243,7 @@ fn tool_schema(schema: serde_json::Value) -> std::sync::Arc<JsonObject> {
     }
 }
 
+#[allow(clippy::manual_async_fn)] // ServerHandler trait requires impl Future signatures
 impl ServerHandler for PawlsaServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
@@ -260,9 +252,7 @@ impl ServerHandler for PawlsaServer {
                     subscribe: None,
                     list_changed: None,
                 }),
-                tools: Some(ToolsCapability {
-                    list_changed: None,
-                }),
+                tools: Some(ToolsCapability { list_changed: None }),
                 ..Default::default()
             },
             server_info: Implementation {
@@ -369,9 +359,7 @@ impl ServerHandler for PawlsaServer {
                     uri_template: "pawlsa://alsa/cards/{index}".to_string(),
                     name: "ALSA Card Detail".to_string(),
                     title: None,
-                    description: Some(
-                        "Detail for ALSA card N (PCM devices, controls)".to_string(),
-                    ),
+                    description: Some("Detail for ALSA card N (PCM devices, controls)".to_string()),
                     mime_type: Some("application/json".to_string()),
                 }
                 .no_annotation(),

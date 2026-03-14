@@ -1,8 +1,7 @@
-/// Columnar text format using │ as column separator, ▌ as row separator.
+/// Columnar text format using `, ` as column separator, ` ▌ ` as row separator.
 /// Header row states field names once, then data rows follow.
 /// Designed to be token-efficient and readable in raw JSON strings
 /// where \n renders as literal backslash-n.
-
 pub struct Table {
     headers: Vec<&'static str>,
     rows: Vec<Vec<String>>,
@@ -20,7 +19,13 @@ impl Table {
         self.rows.push(
             values
                 .iter()
-                .map(|v| if v.is_empty() { "N/A".to_string() } else { (*v).to_string() })
+                .map(|v| {
+                    if v.is_empty() {
+                        "N/A".to_string()
+                    } else {
+                        (*v).to_string()
+                    }
+                })
                 .collect(),
         );
     }
