@@ -242,51 +242,7 @@ impl PawlsaServer {
         ))]))
     }
 
-    async fn tool_pw_set_node_props(
-        &self,
-        args: &serde_json::Value,
-    ) -> Result<CallToolResult, ErrorData> {
-        let id = args["id"]
-            .as_u64()
-            .ok_or_else(|| ErrorData::invalid_params("missing id", None))?
-            as u32;
-        let props_val = args
-            .get("props")
-            .ok_or_else(|| ErrorData::invalid_params("missing props", None))?;
-        let props_obj = props_val
-            .as_object()
-            .ok_or_else(|| ErrorData::invalid_params("props must be an object", None))?;
-
-        let props: std::collections::HashMap<String, String> = props_obj
-            .iter()
-            .map(|(k, v)| {
-                (
-                    k.clone(),
-                    v.as_str().map(String::from).unwrap_or_else(|| v.to_string()),
-                )
-            })
-            .collect();
-
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        self.pw_cmd
-            .send(PwCommand::SetNodeProps {
-                id,
-                props,
-                reply: tx,
-            })
-            .map_err(|_| ErrorData::internal_error("pw thread not running", None))?;
-
-        let result = rx
-            .await
-            .map_err(|_| ErrorData::internal_error("pw thread dropped reply", None))?;
-
-        match result {
-            Ok(()) => Ok(CallToolResult::success(vec![Content::text(format!(
-                "Node {id} properties updated"
-            ))])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
-        }
-    }
+    // Future: pw_set_node_props via PipeWire metadata interface
 }
 
 fn tool_schema(schema: serde_json::Value) -> std::sync::Arc<JsonObject> {
@@ -569,27 +525,6 @@ impl ServerHandler for PawlsaServer {
                         .idempotent(true)
                         .open_world(false),
                 ),
-                Tool::new(
-                    "pw_set_node_props",
-                    "Set properties on a PipeWire node (requires metadata interface — may not be supported on all setups)",
-                    tool_schema(json!({
-                        "type": "object",
-                        "properties": {
-                            "id": { "type": "integer", "description": "PipeWire node ID" },
-                            "props": {
-                                "type": "object",
-                                "description": "Key-value properties to set",
-                                "additionalProperties": { "type": "string" }
-                            }
-                        },
-                        "required": ["id", "props"]
-                    })),
-                )
-                .annotate(
-                    ToolAnnotations::new()
-                        .destructive(false)
-                        .open_world(false),
-                ),
             ];
             Ok(ListToolsResult {
                 tools,
@@ -611,7 +546,6 @@ impl ServerHandler for PawlsaServer {
                 "pw_link_destroy" => self.tool_pw_link_destroy(&args).await,
                 "mixer_set_volume" => self.tool_mixer_set_volume(&args),
                 "mixer_set_switch" => self.tool_mixer_set_switch(&args),
-                "pw_set_node_props" => self.tool_pw_set_node_props(&args).await,
                 _ => Err(ErrorData::invalid_params(
                     format!("unknown tool: {}", request.name),
                     None,

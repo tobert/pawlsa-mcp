@@ -32,7 +32,9 @@ Resources: `pawlsa://alsa/cards`, `pawlsa://alsa/midi/ports`, `pawlsa://pw/nodes
 
 Templates: `pawlsa://alsa/cards/{index}`, `pawlsa://alsa/devices/{category}`, `pawlsa://alsa/mixer/{card_index}`, `pawlsa://pw/nodes/{id}`
 
-Tools: `pw_link_create`, `pw_link_destroy`, `mixer_set_volume`, `mixer_set_switch`, `pw_set_node_props` (stubbed)
+Tools: `pw_link_create`, `pw_link_destroy`, `mixer_set_volume`, `mixer_set_switch`
+
+Future: `pw_set_node_props` — requires binding the PipeWire metadata interface, which pipewire-rs doesn't wrap ergonomically yet.
 
 ## Testing
 

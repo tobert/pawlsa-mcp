@@ -26,11 +26,6 @@ pub enum PwCommand {
         id: u32,
         reply: tokio::sync::oneshot::Sender<Result<(), String>>,
     },
-    SetNodeProps {
-        id: u32,
-        props: HashMap<String, String>,
-        reply: tokio::sync::oneshot::Sender<Result<(), String>>,
-    },
 }
 
 pub struct PwHandle {
@@ -190,18 +185,7 @@ fn handle_command(
                 }
             }
         }
-        PwCommand::SetNodeProps { id, props, reply } => {
-            // Set properties on a node via metadata
-            // For now, we update the props in our snapshot state and log
-            // True property setting requires the metadata interface or node.set_param
-            // which isn't well-supported in pipewire-rs for arbitrary props.
-            // We'll report this limitation honestly.
-            let _ = reply.send(Err(format!(
-                "set_node_props for node {id} with {} props: not yet implemented \
-                 (requires PipeWire metadata interface)",
-                props.len()
-            )));
-        }
+        // Future: SetNodeProps via PipeWire metadata interface
     }
 }
 
