@@ -233,6 +233,73 @@ impl PawlsaServer {
         ))]))
     }
 
+    async fn tool_play_wav(&self, args: &serde_json::Value) -> Result<CallToolResult, ErrorData> {
+        let file_path = args["file_path"]
+            .as_str()
+            .ok_or_else(|| ErrorData::invalid_params("missing file_path", None))?
+            .to_string();
+        let device = args
+            .get("device")
+            .and_then(|v| v.as_str())
+            .unwrap_or("pipewire")
+            .to_string();
+
+        let path = std::path::PathBuf::from(&file_path);
+
+        let result = tokio::task::spawn_blocking(move || {
+            alsa::playback::play_wav_file(&path, &device)
+        })
+        .await
+        .map_err(|e| ErrorData::internal_error(format!("task panicked: {e}"), None))?
+        .map_err(|e| ErrorData::internal_error(format!("{e:#}"), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Played {file_path}: {} frames ({} ms) at {} Hz, {} ch",
+            result.frames_played, result.duration_ms, result.sample_rate, result.channels
+        ))]))
+    }
+
+    async fn tool_play_pcm(&self, args: &serde_json::Value) -> Result<CallToolResult, ErrorData> {
+        use base64::Engine;
+
+        let pcm_b64 = args["pcm_samples"]
+            .as_str()
+            .ok_or_else(|| ErrorData::invalid_params("missing pcm_samples", None))?;
+        let sample_rate = args["sample_rate"]
+            .as_u64()
+            .ok_or_else(|| ErrorData::invalid_params("missing sample_rate", None))?
+            as u32;
+        let channels = args["channels"]
+            .as_u64()
+            .ok_or_else(|| ErrorData::invalid_params("missing channels", None))?
+            as u16;
+        let sample_format = args["sample_format"]
+            .as_str()
+            .ok_or_else(|| ErrorData::invalid_params("missing sample_format", None))?
+            .to_string();
+        let device = args
+            .get("device")
+            .and_then(|v| v.as_str())
+            .unwrap_or("pipewire")
+            .to_string();
+
+        let pcm_data = base64::engine::general_purpose::STANDARD
+            .decode(pcm_b64)
+            .map_err(|e| ErrorData::invalid_params(format!("invalid base64: {e}"), None))?;
+
+        let result = tokio::task::spawn_blocking(move || {
+            alsa::playback::play_pcm(&pcm_data, sample_rate, channels, &sample_format, &device)
+        })
+        .await
+        .map_err(|e| ErrorData::internal_error(format!("task panicked: {e}"), None))?
+        .map_err(|e| ErrorData::internal_error(format!("{e:#}"), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Played {} frames ({} ms) at {} Hz, {} ch",
+            result.frames_played, result.duration_ms, result.sample_rate, result.channels
+        ))]))
+    }
+
     // Future: pw_set_node_props via PipeWire metadata interface
 }
 
@@ -264,7 +331,8 @@ impl ServerHandler for PawlsaServer {
             },
             instructions: Some(
                 "Linux audio system state: ALSA hardware/MIDI + PipeWire graph. \
-                 Tools for PipeWire link routing and ALSA mixer control."
+                 Tools for PipeWire link routing and ALSA mixer control. \
+                 Tools for audio playback via WAV files or base64-encoded raw PCM data."
                     .to_string(),
             ),
             ..Default::default()
@@ -513,6 +581,47 @@ impl ServerHandler for PawlsaServer {
                         .idempotent(true)
                         .open_world(false),
                 ),
+                Tool::new(
+                    "play_wav",
+                    "Play a WAV file through an ALSA device",
+                    tool_schema(json!({
+                        "type": "object",
+                        "properties": {
+                            "file_path": { "type": "string", "description": "Path to a WAV file" },
+                            "device": { "type": "string", "description": "ALSA device name (default: 'pipewire')" }
+                        },
+                        "required": ["file_path"]
+                    })),
+                )
+                .annotate(
+                    ToolAnnotations::new()
+                        .destructive(false)
+                        .open_world(false),
+                ),
+                Tool::new(
+                    "play_pcm",
+                    "Play base64-encoded raw PCM samples through an ALSA device",
+                    tool_schema(json!({
+                        "type": "object",
+                        "properties": {
+                            "pcm_samples": { "type": "string", "description": "Base64-encoded raw PCM sample data" },
+                            "sample_rate": { "type": "integer", "description": "Sample rate in Hz (e.g. 44100, 48000)" },
+                            "channels": { "type": "integer", "description": "Number of channels (1 = mono, 2 = stereo)" },
+                            "sample_format": {
+                                "type": "string",
+                                "description": "PCM sample format",
+                                "enum": ["s16le", "s32le", "f32le", "f64le"]
+                            },
+                            "device": { "type": "string", "description": "ALSA device name (default: 'pipewire')" }
+                        },
+                        "required": ["pcm_samples", "sample_rate", "channels", "sample_format"]
+                    })),
+                )
+                .annotate(
+                    ToolAnnotations::new()
+                        .destructive(false)
+                        .open_world(false),
+                ),
             ];
             Ok(ListToolsResult {
                 tools,
@@ -534,6 +643,8 @@ impl ServerHandler for PawlsaServer {
                 "pw_link_destroy" => self.tool_pw_link_destroy(&args).await,
                 "mixer_set_volume" => self.tool_mixer_set_volume(&args),
                 "mixer_set_switch" => self.tool_mixer_set_switch(&args),
+                "play_wav" => self.tool_play_wav(&args).await,
+                "play_pcm" => self.tool_play_pcm(&args).await,
                 _ => Err(ErrorData::invalid_params(
                     format!("unknown tool: {}", request.name),
                     None,

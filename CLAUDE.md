@@ -13,7 +13,7 @@ cargo build
 ## Architecture
 
 - **PW thread**: `std::thread` running `pipewire::MainLoop`. Updates `Arc<RwLock<PwState>>` on registry events. Commands from tokio arrive via `pipewire::channel`.
-- **ALSA**: Synchronous calls inline in async handlers (fast enough, no spawn_blocking).
+- **ALSA**: Synchronous calls inline in async handlers (fast enough, no spawn_blocking). Exception: playback tools use `spawn_blocking` since they block for the duration of audio output.
 - **State bridge**: `std::sync::RwLock` (not tokio's) because the PW writer is a std thread. Tokio side holds read lock only briefly — never across `.await`.
 - **Output format**: Columnar text with `, ` column separator and ` ▌ ` row separator. These Unicode characters pass through JSON strings without escaping (unlike `\n`/`\t`). Empty fields render as `N/A`.
 
@@ -22,7 +22,7 @@ cargo build
 - `src/main.rs` — tokio entrypoint, tracing to stderr, PW spawn, stdio serve
 - `src/server.rs` — `PawlsaServer`, `ServerHandler` impl, URI routing, tool dispatch
 - `src/format.rs` — `Table` builder for columnar output
-- `src/alsa/` — cards, devices, mixer (read + set), midi
+- `src/alsa/` — cards, devices, mixer (read + set), midi, playback
 - `src/pw/mod.rs` — PW thread, registry callbacks, command channel handler
 - `src/pw/state.rs` — snapshot types, format methods
 
@@ -32,7 +32,7 @@ Resources: `pawlsa://alsa/cards`, `pawlsa://alsa/midi/ports`, `pawlsa://pw/nodes
 
 Templates: `pawlsa://alsa/cards/{index}`, `pawlsa://alsa/devices/{category}`, `pawlsa://alsa/mixer/{card_index}`, `pawlsa://pw/nodes/{id}`
 
-Tools: `pw_link_create`, `pw_link_destroy`, `mixer_set_volume`, `mixer_set_switch`
+Tools: `pw_link_create`, `pw_link_destroy`, `mixer_set_volume`, `mixer_set_switch`, `play_wav`, `play_pcm`
 
 Future: `pw_set_node_props` — requires binding the PipeWire metadata interface, which pipewire-rs doesn't wrap ergonomically yet.
 

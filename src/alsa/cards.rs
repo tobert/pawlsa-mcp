@@ -30,10 +30,7 @@ pub fn list_cards() -> Result<Vec<AlsaCard>> {
     Ok(cards)
 }
 
-fn enumerate_pcm_devices(
-    ctl: &alsa::Ctl,
-    direction: alsa::Direction,
-) -> Vec<PcmDevice> {
+fn enumerate_pcm_devices(ctl: &alsa::Ctl, direction: alsa::Direction) -> Vec<PcmDevice> {
     let mut devices = Vec::new();
     for device_id in alsa::ctl::DeviceIter::new(ctl) {
         match ctl.pcm_info(device_id as u32, 0, direction) {

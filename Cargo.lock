@@ -633,6 +633,7 @@ version = "0.1.0"
 dependencies = [
  "alsa",
  "anyhow",
+ "base64",
  "pipewire",
  "rmcp",
  "serde",
