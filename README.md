@@ -15,6 +15,8 @@ Built to give AI assistants (Claude, etc.) direct read/write access to audio rou
 **Tools** (mutations):
 - `pw_link_create` / `pw_link_destroy` — route audio between PipeWire ports
 - `mixer_set_volume` / `mixer_set_switch` — control ALSA mixer elements (volume, mute)
+- `play_wav` — play a WAV file through ALSA (default device: pipewire)
+- `play_pcm` — play base64-encoded raw PCM samples (s16le, s32le, f32le, f64le)
 
 ## Requirements
 
