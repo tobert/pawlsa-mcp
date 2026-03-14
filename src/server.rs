@@ -9,10 +9,10 @@ use crate::alsa;
 use crate::pw::PwCommand;
 use crate::pw::state::PwState;
 
-fn json_resource(text: String, uri: impl Into<String>) -> ResourceContents {
+fn text_resource(text: String, uri: impl Into<String>) -> ResourceContents {
     ResourceContents::TextResourceContents {
         uri: uri.into(),
-        mime_type: Some("application/json".to_string()),
+        mime_type: Some("text/plain".to_string()),
         text,
         meta: None,
     }
@@ -32,23 +32,19 @@ impl PawlsaServer {
     }
 
     fn read_alsa_resource(&self, path: &str) -> Result<ReadResourceResult, ErrorData> {
+        let err = |e: anyhow::Error| ErrorData::internal_error(e.to_string(), None);
+
         match path {
             "cards" => {
-                let cards = alsa::cards::list_cards()
-                    .map_err(|e| ErrorData::internal_error(format!("alsa cards: {e}"), None))?;
-                let json = serde_json::to_string_pretty(&cards)
-                    .map_err(|e| ErrorData::internal_error(format!("serialize: {e}"), None))?;
+                let text = alsa::cards::list_cards_formatted().map_err(err)?;
                 Ok(ReadResourceResult {
-                    contents: vec![json_resource(json, "pawlsa://alsa/cards")],
+                    contents: vec![text_resource(text, "pawlsa://alsa/cards")],
                 })
             }
             "midi/ports" => {
-                let clients = alsa::midi::list_midi_ports()
-                    .map_err(|e| ErrorData::internal_error(format!("alsa midi: {e}"), None))?;
-                let json = serde_json::to_string_pretty(&clients)
-                    .map_err(|e| ErrorData::internal_error(format!("serialize: {e}"), None))?;
+                let text = alsa::midi::list_midi_ports().map_err(err)?;
                 Ok(ReadResourceResult {
-                    contents: vec![json_resource(json, "pawlsa://alsa/midi/ports")],
+                    contents: vec![text_resource(text, "pawlsa://alsa/midi/ports")],
                 })
             }
             _ => {
@@ -56,37 +52,25 @@ impl PawlsaServer {
                     let index: i32 = rest.parse().map_err(|_| {
                         ErrorData::invalid_params("invalid card index", None)
                     })?;
-                    let detail = alsa::cards::card_detail(index).map_err(|e| {
-                        ErrorData::internal_error(format!("alsa card detail: {e}"), None)
-                    })?;
-                    let json = serde_json::to_string_pretty(&detail)
-                        .map_err(|e| ErrorData::internal_error(format!("serialize: {e}"), None))?;
+                    let text = alsa::cards::card_detail(index).map_err(err)?;
                     let uri = format!("pawlsa://alsa/cards/{index}");
                     Ok(ReadResourceResult {
-                        contents: vec![json_resource(json, uri)],
+                        contents: vec![text_resource(text, uri)],
                     })
                 } else if let Some(category) = path.strip_prefix("devices/") {
-                    let hints = alsa::devices::list_device_hints(category).map_err(|e| {
-                        ErrorData::internal_error(format!("alsa devices: {e}"), None)
-                    })?;
-                    let json = serde_json::to_string_pretty(&hints)
-                        .map_err(|e| ErrorData::internal_error(format!("serialize: {e}"), None))?;
+                    let text = alsa::devices::list_device_hints(category).map_err(err)?;
                     let uri = format!("pawlsa://alsa/devices/{category}");
                     Ok(ReadResourceResult {
-                        contents: vec![json_resource(json, uri)],
+                        contents: vec![text_resource(text, uri)],
                     })
                 } else if let Some(rest) = path.strip_prefix("mixer/") {
                     let card_index: i32 = rest.parse().map_err(|_| {
                         ErrorData::invalid_params("invalid card index", None)
                     })?;
-                    let elements = alsa::mixer::read_mixer(card_index).map_err(|e| {
-                        ErrorData::internal_error(format!("alsa mixer: {e}"), None)
-                    })?;
-                    let json = serde_json::to_string_pretty(&elements)
-                        .map_err(|e| ErrorData::internal_error(format!("serialize: {e}"), None))?;
+                    let text = alsa::mixer::read_mixer_formatted(card_index).map_err(err)?;
                     let uri = format!("pawlsa://alsa/mixer/{card_index}");
                     Ok(ReadResourceResult {
-                        contents: vec![json_resource(json, uri)],
+                        contents: vec![text_resource(text, uri)],
                     })
                 } else {
                     Err(ErrorData::resource_not_found(
@@ -102,43 +86,26 @@ impl PawlsaServer {
         let st = self.pw_state.read().unwrap();
 
         match path {
-            "nodes" => {
-                let nodes: Vec<_> = st.nodes.values().cloned().collect();
-                let json = serde_json::to_string_pretty(&nodes)
-                    .map_err(|e| ErrorData::internal_error(format!("serialize: {e}"), None))?;
-                Ok(ReadResourceResult {
-                    contents: vec![json_resource(json, "pawlsa://pw/nodes")],
-                })
-            }
-            "ports" => {
-                let ports: Vec<_> = st.ports.values().cloned().collect();
-                let json = serde_json::to_string_pretty(&ports)
-                    .map_err(|e| ErrorData::internal_error(format!("serialize: {e}"), None))?;
-                Ok(ReadResourceResult {
-                    contents: vec![json_resource(json, "pawlsa://pw/ports")],
-                })
-            }
-            "links" => {
-                let links: Vec<_> = st.links.values().cloned().collect();
-                let json = serde_json::to_string_pretty(&links)
-                    .map_err(|e| ErrorData::internal_error(format!("serialize: {e}"), None))?;
-                Ok(ReadResourceResult {
-                    contents: vec![json_resource(json, "pawlsa://pw/links")],
-                })
-            }
+            "nodes" => Ok(ReadResourceResult {
+                contents: vec![text_resource(st.format_nodes(), "pawlsa://pw/nodes")],
+            }),
+            "ports" => Ok(ReadResourceResult {
+                contents: vec![text_resource(st.format_ports(), "pawlsa://pw/ports")],
+            }),
+            "links" => Ok(ReadResourceResult {
+                contents: vec![text_resource(st.format_links(), "pawlsa://pw/links")],
+            }),
             _ => {
                 if let Some(rest) = path.strip_prefix("nodes/") {
                     let id: u32 = rest.parse().map_err(|_| {
                         ErrorData::invalid_params("invalid node id", None)
                     })?;
-                    let node = st.nodes.get(&id).ok_or_else(|| {
+                    let text = st.format_node(id).ok_or_else(|| {
                         ErrorData::resource_not_found(format!("pw node {id} not found"), None)
                     })?;
-                    let json = serde_json::to_string_pretty(node)
-                        .map_err(|e| ErrorData::internal_error(format!("serialize: {e}"), None))?;
                     let uri = format!("pawlsa://pw/nodes/{id}");
                     Ok(ReadResourceResult {
-                        contents: vec![json_resource(json, uri)],
+                        contents: vec![text_resource(text, uri)],
                     })
                 } else {
                     Err(ErrorData::resource_not_found(
@@ -365,12 +332,68 @@ impl ServerHandler for PawlsaServer {
     ) -> impl Future<Output = Result<ListResourcesResult, ErrorData>> + Send + '_ {
         async {
             let resources = vec![
-                RawResource::new("pawlsa://alsa/cards", "ALSA Sound Cards").no_annotation(),
-                RawResource::new("pawlsa://alsa/midi/ports", "MIDI Sequencer Clients/Ports")
-                    .no_annotation(),
-                RawResource::new("pawlsa://pw/nodes", "PipeWire Nodes").no_annotation(),
-                RawResource::new("pawlsa://pw/ports", "PipeWire Ports").no_annotation(),
-                RawResource::new("pawlsa://pw/links", "PipeWire Links").no_annotation(),
+                RawResource {
+                    uri: "pawlsa://alsa/cards".into(),
+                    name: "ALSA Sound Cards".into(),
+                    title: None,
+                    description: Some("All ALSA sound cards with index, name, and longname".into()),
+                    mime_type: Some("text/plain".into()),
+                    size: None,
+                    icons: None,
+                }
+                .no_annotation(),
+                RawResource {
+                    uri: "pawlsa://alsa/midi/ports".into(),
+                    name: "MIDI Sequencer Clients/Ports".into(),
+                    title: None,
+                    description: Some(
+                        "ALSA sequencer clients and their ports with capabilities and type flags"
+                            .into(),
+                    ),
+                    mime_type: Some("text/plain".into()),
+                    size: None,
+                    icons: None,
+                }
+                .no_annotation(),
+                RawResource {
+                    uri: "pawlsa://pw/nodes".into(),
+                    name: "PipeWire Nodes".into(),
+                    title: None,
+                    description: Some(
+                        "All PipeWire nodes with state, port counts, and properties \
+                         (media.class, node.name, node.description, etc.)"
+                            .into(),
+                    ),
+                    mime_type: Some("text/plain".into()),
+                    size: None,
+                    icons: None,
+                }
+                .no_annotation(),
+                RawResource {
+                    uri: "pawlsa://pw/ports".into(),
+                    name: "PipeWire Ports".into(),
+                    title: None,
+                    description: Some(
+                        "All PipeWire ports with node_id, direction, and properties".into(),
+                    ),
+                    mime_type: Some("text/plain".into()),
+                    size: None,
+                    icons: None,
+                }
+                .no_annotation(),
+                RawResource {
+                    uri: "pawlsa://pw/links".into(),
+                    name: "PipeWire Links".into(),
+                    title: None,
+                    description: Some(
+                        "Active PipeWire links showing output/input node and port IDs with state"
+                            .into(),
+                    ),
+                    mime_type: Some("text/plain".into()),
+                    size: None,
+                    icons: None,
+                }
+                .no_annotation(),
             ];
             Ok(ListResourcesResult {
                 resources,

@@ -1,7 +1,8 @@
 use anyhow::Result;
-use serde::Serialize;
 
-#[derive(Clone, Serialize)]
+use crate::format::Table;
+
+#[derive(Clone)]
 pub struct ChannelVolume {
     pub channel: String,
     pub volume: i64,
@@ -9,7 +10,7 @@ pub struct ChannelVolume {
     pub switch: Option<bool>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone)]
 pub struct MixerElement {
     pub name: String,
     pub index: u32,
@@ -126,6 +127,39 @@ pub fn read_mixer(card_index: i32) -> Result<Vec<MixerElement>> {
     }
 
     Ok(elements)
+}
+
+pub fn read_mixer_formatted(card_index: i32) -> Result<String> {
+    let elements = read_mixer(card_index)?;
+    let mut t = Table::new(&["element", "channel", "vol", "range", "dB", "muted"]);
+    for e in &elements {
+        let range = e
+            .playback_volume_range
+            .map(|(lo, hi)| format!("{lo}..{hi}"))
+            .unwrap_or_default();
+        for ch in &e.playback_channels {
+            let muted = match ch.switch {
+                Some(true) => "no",
+                Some(false) => "yes",
+                None => "",
+            };
+            let vol = ch.volume.to_string();
+            let db = format!("{:.1}", ch.volume_db);
+            t.row(&[&e.name, &ch.channel, &vol, &range, &db, muted]);
+        }
+        for ch in &e.capture_channels {
+            let muted = match ch.switch {
+                Some(true) => "no",
+                Some(false) => "yes",
+                None => "",
+            };
+            let vol = ch.volume.to_string();
+            let db = format!("{:.1}", ch.volume_db);
+            let name = format!("{} [cap]", e.name);
+            t.row(&[&name, &ch.channel, &vol, &range, &db, muted]);
+        }
+    }
+    Ok(t.render())
 }
 
 fn parse_channel(name: &str) -> alsa::mixer::SelemChannelId {

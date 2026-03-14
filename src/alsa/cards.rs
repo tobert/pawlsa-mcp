@@ -1,31 +1,20 @@
 use anyhow::Result;
-use serde::Serialize;
-use serde_json::Value;
 
-#[derive(Clone, Serialize)]
+use crate::format::Table;
+
+#[derive(Clone)]
 pub struct AlsaCard {
     pub index: i32,
     pub name: String,
     pub longname: String,
 }
 
-#[derive(Clone, Serialize)]
-pub struct PcmDevice {
-    pub device: u32,
-    pub name: String,
-    pub id: String,
-    pub subdevices_count: u32,
-    pub subdevices_avail: u32,
-}
-
-#[derive(Clone, Serialize)]
-pub struct CardDetail {
-    pub card: AlsaCard,
-    pub driver: String,
-    pub mixer_name: String,
-    pub components: String,
-    pub playback_devices: Vec<PcmDevice>,
-    pub capture_devices: Vec<PcmDevice>,
+struct PcmDevice {
+    device: u32,
+    name: String,
+    id: String,
+    subdevices_count: u32,
+    subdevices_avail: u32,
 }
 
 pub fn list_cards() -> Result<Vec<AlsaCard>> {
@@ -63,23 +52,49 @@ fn enumerate_pcm_devices(
     devices
 }
 
-pub fn card_detail(index: i32) -> Result<Value> {
+pub fn card_detail(index: i32) -> Result<String> {
     let card = alsa::Card::new(index);
     let ctl = alsa::Ctl::from_card(&card, false)?;
     let info = ctl.card_info()?;
 
-    let detail = CardDetail {
-        card: AlsaCard {
-            index,
-            name: info.get_name()?.to_string(),
-            longname: info.get_longname()?.to_string(),
-        },
-        driver: info.get_driver()?.to_string(),
-        mixer_name: info.get_mixername()?.to_string(),
-        components: info.get_components()?.to_string(),
-        playback_devices: enumerate_pcm_devices(&ctl, alsa::Direction::Playback),
-        capture_devices: enumerate_pcm_devices(&ctl, alsa::Direction::Capture),
-    };
+    let mut out = format!(
+        "card {}, {}, {}, driver:{}, mixer:{}, components:{}",
+        index,
+        info.get_name()?,
+        info.get_longname()?,
+        info.get_driver()?,
+        info.get_mixername()?,
+        info.get_components()?,
+    );
 
-    Ok(serde_json::to_value(detail)?)
+    let pb = enumerate_pcm_devices(&ctl, alsa::Direction::Playback);
+    let cap = enumerate_pcm_devices(&ctl, alsa::Direction::Capture);
+
+    if !pb.is_empty() || !cap.is_empty() {
+        out.push_str(" ▌ dir, dev, id, name, subdevs");
+        for d in &pb {
+            out.push_str(&format!(
+                " ▌ playback, {}, {}, {}, {}/{}",
+                d.device, d.id, d.name, d.subdevices_avail, d.subdevices_count
+            ));
+        }
+        for d in &cap {
+            out.push_str(&format!(
+                " ▌ capture, {}, {}, {}, {}/{}",
+                d.device, d.id, d.name, d.subdevices_avail, d.subdevices_count
+            ));
+        }
+    }
+
+    Ok(out)
+}
+
+pub fn list_cards_formatted() -> Result<String> {
+    let cards = list_cards()?;
+    let mut t = Table::new(&["index", "name", "longname"]);
+    for c in &cards {
+        let idx = c.index.to_string();
+        t.row(&[&idx, &c.name, &c.longname]);
+    }
+    Ok(t.render())
 }

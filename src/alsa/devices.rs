@@ -1,23 +1,20 @@
 use anyhow::Result;
-use serde::Serialize;
 
-#[derive(Clone, Serialize)]
-pub struct DeviceHint {
-    pub name: Option<String>,
-    pub desc: Option<String>,
-    pub direction: Option<String>,
-}
+use crate::format::Table;
 
-pub fn list_device_hints(category: &str) -> Result<Vec<DeviceHint>> {
+pub fn list_device_hints(category: &str) -> Result<String> {
     let hints = alsa::device_name::HintIter::new_str(None, category)?;
-    Ok(hints
-        .map(|h| DeviceHint {
-            name: h.name,
-            desc: h.desc,
-            direction: h.direction.map(|d| match d {
-                alsa::Direction::Playback => "playback".to_string(),
-                alsa::Direction::Capture => "capture".to_string(),
-            }),
-        })
-        .collect())
+    let mut t = Table::new(&["name", "direction", "desc"]);
+    for h in hints {
+        let dir = h.direction.map(|d| match d {
+            alsa::Direction::Playback => "playback",
+            alsa::Direction::Capture => "capture",
+        });
+        t.row(&[
+            h.name.as_deref().unwrap_or(""),
+            dir.unwrap_or(""),
+            h.desc.as_deref().unwrap_or(""),
+        ]);
+    }
+    Ok(t.render())
 }
