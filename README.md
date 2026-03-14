@@ -1,4 +1,6 @@
-# pawlsa-mcp
+<p align="center">
+  <img src="banner.svg" alt="pawlsa-mcp: Linux audio system state for AI" width="100%"/>
+</p>
 
 MCP server for Linux audio systems. Exposes ALSA hardware/MIDI state and PipeWire graph as [MCP](https://modelcontextprotocol.io/) resources and tools over stdio.
 

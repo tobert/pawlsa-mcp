@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
+  <rect width="400" height="400" fill="#1a1a2e" rx="40"/>
+
+  <!-- Main pad (large circle) -->
+  <ellipse cx="200" cy="240" rx="70" ry="60" fill="#e94560"/>
+
+  <!-- Toe pads as speaker cones / audio nodes -->
+  <circle cx="140" cy="170" r="28" fill="#e94560"/>
+  <circle cx="200" cy="145" r="28" fill="#e94560"/>
+  <circle cx="260" cy="170" r="28" fill="#e94560"/>
+
+  <!-- Audio wave rings on the main pad -->
+  <path d="M170 240 Q185 220 200 240 Q215 260 230 240" stroke="#eaeaea" stroke-width="3" fill="none" stroke-opacity="0.6"/>
+  <path d="M160 240 Q180 210 200 240 Q220 270 240 240" stroke="#eaeaea" stroke-width="2.5" fill="none" stroke-opacity="0.4"/>
+  <path d="M150 240 Q175 200 200 240 Q225 280 250 240" stroke="#eaeaea" stroke-width="2" fill="none" stroke-opacity="0.25"/>
+
+  <!-- Speaker cone circles in toe pads -->
+  <circle cx="140" cy="170" r="14" fill="none" stroke="#eaeaea" stroke-width="2" stroke-opacity="0.5"/>
+  <circle cx="140" cy="170" r="7" fill="#eaeaea" fill-opacity="0.3"/>
+  <circle cx="200" cy="145" r="14" fill="none" stroke="#eaeaea" stroke-width="2" stroke-opacity="0.5"/>
+  <circle cx="200" cy="145" r="7" fill="#eaeaea" fill-opacity="0.3"/>
+  <circle cx="260" cy="170" r="14" fill="none" stroke="#eaeaea" stroke-width="2" stroke-opacity="0.5"/>
+  <circle cx="260" cy="170" r="7" fill="#eaeaea" fill-opacity="0.3"/>
+
+  <!-- Text -->
+  <text x="200" y="345" text-anchor="middle" font-family="monospace" font-size="36" font-weight="bold" fill="#eaeaea">pawlsa</text>
+  <text x="200" y="370" text-anchor="middle" font-family="monospace" font-size="13" fill="#eaeaea" fill-opacity="0.5">mcp</text>
+</svg>

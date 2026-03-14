@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320">
+  <rect width="1280" height="320" fill="#1a1a2e"/>
+
+  <!-- Paw print, left side -->
+  <g transform="translate(180, 160) scale(0.85)">
+    <!-- Main pad -->
+    <ellipse cx="0" cy="30" rx="70" ry="60" fill="#e94560"/>
+    <!-- Toes -->
+    <circle cx="-60" cy="-40" r="28" fill="#e94560"/>
+    <circle cx="0" cy="-65" r="28" fill="#e94560"/>
+    <circle cx="60" cy="-40" r="28" fill="#e94560"/>
+
+    <!-- Waves on pad -->
+    <path d="M-30 30 Q-15 10 0 30 Q15 50 30 30" stroke="#eaeaea" stroke-width="3" fill="none" stroke-opacity="0.6"/>
+    <path d="M-40 30 Q-20 0 0 30 Q20 60 40 30" stroke="#eaeaea" stroke-width="2.5" fill="none" stroke-opacity="0.4"/>
+    <path d="M-50 30 Q-25 -10 0 30 Q25 70 50 30" stroke="#eaeaea" stroke-width="2" fill="none" stroke-opacity="0.25"/>
+
+    <!-- Speaker cones in toes -->
+    <circle cx="-60" cy="-40" r="14" fill="none" stroke="#eaeaea" stroke-width="2" stroke-opacity="0.5"/>
+    <circle cx="-60" cy="-40" r="7" fill="#eaeaea" fill-opacity="0.3"/>
+    <circle cx="0" cy="-65" r="14" fill="none" stroke="#eaeaea" stroke-width="2" stroke-opacity="0.5"/>
+    <circle cx="0" cy="-65" r="7" fill="#eaeaea" fill-opacity="0.3"/>
+    <circle cx="60" cy="-40" r="14" fill="none" stroke="#eaeaea" stroke-width="2" stroke-opacity="0.5"/>
+    <circle cx="60" cy="-40" r="7" fill="#eaeaea" fill-opacity="0.3"/>
+  </g>
+
+  <!-- Decorative waveform line spanning the banner -->
+  <path d="M350 160 Q400 120 450 160 Q500 200 550 160 Q600 120 650 160 Q700 200 750 160 Q800 120 850 160 Q900 200 950 160 Q1000 120 1050 160 Q1100 200 1150 160"
+    stroke="#e94560" stroke-width="2" fill="none" stroke-opacity="0.15"/>
+  <path d="M350 160 Q420 135 490 160 Q560 185 630 160 Q700 135 770 160 Q840 185 910 160 Q980 135 1050 160 Q1120 185 1190 160"
+    stroke="#e94560" stroke-width="1.5" fill="none" stroke-opacity="0.08"/>
+
+  <!-- Title text -->
+  <text x="640" y="145" text-anchor="middle" font-family="monospace" font-size="72" font-weight="bold" fill="#eaeaea">pawlsa-mcp</text>
+  <text x="640" y="195" text-anchor="middle" font-family="monospace" font-size="22" fill="#eaeaea" fill-opacity="0.5">Linux audio system state for AI ▌ ALSA + PipeWire ▌ MCP server</text>
+
+  <!-- Subtle tech labels -->
+  <text x="640" y="245" text-anchor="middle" font-family="monospace" font-size="14" fill="#e94560" fill-opacity="0.4">cards ▌ mixer ▌ midi ▌ nodes ▌ ports ▌ links</text>
+</svg>
