@@ -53,7 +53,10 @@ npx @modelcontextprotocol/inspector -- cargo run
 
 ## Output format
 
-Resources use a token-efficient columnar text format designed for AI consumption:
+Resources use a specialized columnar format that balances token use with visual clarity for users.
+
+Mostly this is because we couldn't get json or other formats to readable in the claude code output. If the
+mime type ever gets respected this could switch to json.
 
 ```
 id, state, media.class, node.name, node.description, ports(in/out) ▌ 29, suspended, N/A, Dummy-Driver, N/A, 0/0 ▌ 63, suspended, Audio/Sink, alsa_output.usb-..., PCM2902 Audio Codec Analog Stereo, 2/2
