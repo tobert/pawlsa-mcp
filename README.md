@@ -77,9 +77,9 @@ id, state, media.class, node.name, node.description, ports(in/out) ▌ 29, suspe
 │                         │         │    global → bind proxy   │
 │  ALSA calls inline      │  pw::   │    info → update state   │
 │  (sync, fast)           │  chan   │    global_remove → rm    │
-│                         │  nel   │                          │
+│                         │  nel    │                          │
 │                         │────────►│  Command handler:        │
-│                         │         │    CreateLink / Destroy   │
+│                         │         │    CreateLink / Destroy  │
 └─────────────────────────┘         └──────────────────────────┘
 ```
 
