@@ -12,7 +12,7 @@ cargo build
 
 ## Architecture
 
-- **PW thread**: `std::thread` running `pipewire::MainLoop`. Updates `Arc<RwLock<PwState>>` on registry events. Commands from tokio arrive via `pipewire::channel`.
+- **PW thread**: `std::thread` running `pipewire::MainLoop`. Binds Node, Port, Link, Metadata, Device objects. Updates `Arc<RwLock<PwState>>` on registry/param events. Commands from tokio arrive via `pipewire::channel`. Concrete-typed proxy maps (`TypedProxies`) kept alongside generic `Proxies` for objects needing method calls (subscribe_params, set_param, set_property).
 - **ALSA**: Synchronous calls inline in async handlers (fast enough, no spawn_blocking). Exception: playback tools use `spawn_blocking` since they block for the duration of audio output.
 - **State bridge**: `std::sync::RwLock` (not tokio's) because the PW writer is a std thread. Tokio side holds read lock only briefly — never across `.await`.
 - **Output format**: Columnar text with `, ` column separator and ` ▌ ` row separator. These Unicode characters pass through JSON strings without escaping (unlike `\n`/`\t`). Empty fields render as `N/A`.
@@ -28,13 +28,11 @@ cargo build
 
 ## MCP surface
 
-Resources: `pawlsa://alsa/cards`, `pawlsa://alsa/midi/ports`, `pawlsa://pw/nodes`, `pawlsa://pw/ports`, `pawlsa://pw/links`
+Resources: `pawlsa://alsa/cards`, `pawlsa://alsa/midi/ports`, `pawlsa://pw/nodes`, `pawlsa://pw/ports`, `pawlsa://pw/links`, `pawlsa://pw/metadata`, `pawlsa://pw/devices`
 
-Templates: `pawlsa://alsa/cards/{index}`, `pawlsa://alsa/devices/{category}`, `pawlsa://alsa/mixer/{card_index}`, `pawlsa://pw/nodes/{id}`
+Templates: `pawlsa://alsa/cards/{index}`, `pawlsa://alsa/devices/{category}`, `pawlsa://alsa/mixer/{card_index}`, `pawlsa://pw/nodes/{id}`, `pawlsa://pw/metadata/{id}`, `pawlsa://pw/devices/{id}`
 
-Tools: `pw_link_create`, `pw_link_destroy`, `mixer_set_volume`, `mixer_set_switch`, `play_wav`, `play_pcm`
-
-Future: `pw_set_node_props` — requires binding the PipeWire metadata interface, which pipewire-rs doesn't wrap ergonomically yet.
+Tools: `pw_link_create`, `pw_link_destroy`, `mixer_set_volume`, `mixer_set_switch`, `play_wav`, `play_pcm`, `pw_set_default_endpoint`, `pw_node_set_volume`, `pw_node_set_mute`, `pw_device_set_profile`
 
 ## Testing
 

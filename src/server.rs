@@ -95,6 +95,12 @@ impl PawlsaServer {
             "links" => Ok(ReadResourceResult {
                 contents: vec![text_resource(st.format_links(), "pawlsa://pw/links")],
             }),
+            "metadata" => Ok(ReadResourceResult {
+                contents: vec![text_resource(st.format_metadata(), "pawlsa://pw/metadata")],
+            }),
+            "devices" => Ok(ReadResourceResult {
+                contents: vec![text_resource(st.format_devices(), "pawlsa://pw/devices")],
+            }),
             _ => {
                 if let Some(rest) = path.strip_prefix("nodes/") {
                     let id: u32 = rest
@@ -104,6 +110,34 @@ impl PawlsaServer {
                         ErrorData::resource_not_found(format!("pw node {id} not found"), None)
                     })?;
                     let uri = format!("pawlsa://pw/nodes/{id}");
+                    Ok(ReadResourceResult {
+                        contents: vec![text_resource(text, uri)],
+                    })
+                } else if let Some(rest) = path.strip_prefix("metadata/") {
+                    let id: u32 = rest
+                        .parse()
+                        .map_err(|_| ErrorData::invalid_params("invalid metadata id", None))?;
+                    let text = st.format_metadata_detail(id).ok_or_else(|| {
+                        ErrorData::resource_not_found(
+                            format!("pw metadata {id} not found"),
+                            None,
+                        )
+                    })?;
+                    let uri = format!("pawlsa://pw/metadata/{id}");
+                    Ok(ReadResourceResult {
+                        contents: vec![text_resource(text, uri)],
+                    })
+                } else if let Some(rest) = path.strip_prefix("devices/") {
+                    let id: u32 = rest
+                        .parse()
+                        .map_err(|_| ErrorData::invalid_params("invalid device id", None))?;
+                    let text = st.format_device(id).ok_or_else(|| {
+                        ErrorData::resource_not_found(
+                            format!("pw device {id} not found"),
+                            None,
+                        )
+                    })?;
+                    let uri = format!("pawlsa://pw/devices/{id}");
                     Ok(ReadResourceResult {
                         contents: vec![text_resource(text, uri)],
                     })
@@ -300,7 +334,184 @@ impl PawlsaServer {
         ))]))
     }
 
-    // Future: pw_set_node_props via PipeWire metadata interface
+    // -- PipeWire metadata tools --
+
+    async fn tool_pw_set_default_endpoint(
+        &self,
+        args: &serde_json::Value,
+    ) -> Result<CallToolResult, ErrorData> {
+        let category = args["category"]
+            .as_str()
+            .ok_or_else(|| ErrorData::invalid_params("missing category (sink or source)", None))?;
+        let node_name = args["node_name"]
+            .as_str()
+            .ok_or_else(|| ErrorData::invalid_params("missing node_name", None))?;
+
+        let key = match category {
+            "sink" => "default.configured.audio.sink",
+            "source" => "default.configured.audio.source",
+            _ => {
+                return Err(ErrorData::invalid_params(
+                    "category must be 'sink' or 'source'",
+                    None,
+                ))
+            }
+        };
+
+        // Find the "default" metadata object
+        let metadata_id = {
+            let st = self.pw_state.read().unwrap();
+            st.metadata
+                .values()
+                .find(|m| m.name == "default")
+                .map(|m| m.id)
+                .ok_or_else(|| {
+                    ErrorData::internal_error("no 'default' metadata object found", None)
+                })?
+        };
+
+        let value = format!(r#"{{"name":"{}"}}"#, node_name);
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.pw_cmd
+            .send(PwCommand::SetMetadataProperty {
+                metadata_id,
+                subject: 0,
+                key: key.to_string(),
+                type_: "Spa:String:JSON".to_string(),
+                value: Some(value),
+                reply: tx,
+            })
+            .map_err(|_| ErrorData::internal_error("pw thread not running", None))?;
+
+        let result = rx
+            .await
+            .map_err(|_| ErrorData::internal_error("pw thread dropped reply", None))?;
+
+        match result {
+            Ok(()) => Ok(CallToolResult::success(vec![Content::text(format!(
+                "Default {category} set to {node_name}"
+            ))])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+        }
+    }
+
+    // -- PipeWire node volume/mute tools --
+
+    async fn tool_pw_node_set_volume(
+        &self,
+        args: &serde_json::Value,
+    ) -> Result<CallToolResult, ErrorData> {
+        let node_id = args["node_id"]
+            .as_u64()
+            .ok_or_else(|| ErrorData::invalid_params("missing node_id", None))?
+            as u32;
+        let volume = args["volume"]
+            .as_f64()
+            .ok_or_else(|| ErrorData::invalid_params("missing volume", None))?
+            as f32;
+
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.pw_cmd
+            .send(PwCommand::SetNodeVolume {
+                node_id,
+                volume,
+                reply: tx,
+            })
+            .map_err(|_| ErrorData::internal_error("pw thread not running", None))?;
+
+        let result = rx
+            .await
+            .map_err(|_| ErrorData::internal_error("pw thread dropped reply", None))?;
+
+        match result {
+            Ok(()) => Ok(CallToolResult::success(vec![Content::text(format!(
+                "Volume set on node {node_id}: {volume:.3}"
+            ))])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+        }
+    }
+
+    async fn tool_pw_node_set_mute(
+        &self,
+        args: &serde_json::Value,
+    ) -> Result<CallToolResult, ErrorData> {
+        let node_id = args["node_id"]
+            .as_u64()
+            .ok_or_else(|| ErrorData::invalid_params("missing node_id", None))?
+            as u32;
+        let mute = args["mute"]
+            .as_bool()
+            .ok_or_else(|| ErrorData::invalid_params("missing mute", None))?;
+
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.pw_cmd
+            .send(PwCommand::SetNodeMute {
+                node_id,
+                mute,
+                reply: tx,
+            })
+            .map_err(|_| ErrorData::internal_error("pw thread not running", None))?;
+
+        let result = rx
+            .await
+            .map_err(|_| ErrorData::internal_error("pw thread dropped reply", None))?;
+
+        let state_str = if mute { "muted" } else { "unmuted" };
+        match result {
+            Ok(()) => Ok(CallToolResult::success(vec![Content::text(format!(
+                "Node {node_id} {state_str}"
+            ))])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+        }
+    }
+
+    // -- PipeWire device tools --
+
+    async fn tool_pw_device_set_profile(
+        &self,
+        args: &serde_json::Value,
+    ) -> Result<CallToolResult, ErrorData> {
+        let device_id = args["device_id"]
+            .as_u64()
+            .ok_or_else(|| ErrorData::invalid_params("missing device_id", None))?
+            as u32;
+        let profile_index = args["profile_index"]
+            .as_u64()
+            .ok_or_else(|| ErrorData::invalid_params("missing profile_index", None))?
+            as u32;
+
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.pw_cmd
+            .send(PwCommand::SetDeviceProfile {
+                device_id,
+                profile_index,
+                reply: tx,
+            })
+            .map_err(|_| ErrorData::internal_error("pw thread not running", None))?;
+
+        let result = rx
+            .await
+            .map_err(|_| ErrorData::internal_error("pw thread dropped reply", None))?;
+
+        match result {
+            Ok(()) => {
+                // Look up profile name for friendlier output
+                let desc = self
+                    .pw_state
+                    .read()
+                    .unwrap()
+                    .devices
+                    .get(&device_id)
+                    .and_then(|d| d.profiles.iter().find(|p| p.index == profile_index))
+                    .map(|p| p.description.clone())
+                    .unwrap_or_else(|| profile_index.to_string());
+                Ok(CallToolResult::success(vec![Content::text(format!(
+                    "Device {device_id} profile set to {desc} (index {profile_index})"
+                ))]))
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+        }
+    }
 }
 
 fn tool_schema(schema: serde_json::Value) -> std::sync::Arc<JsonObject> {
@@ -332,7 +543,9 @@ impl ServerHandler for PawlsaServer {
             instructions: Some(
                 "Linux audio system state: ALSA hardware/MIDI + PipeWire graph. \
                  Tools for PipeWire link routing and ALSA mixer control. \
-                 Tools for audio playback via WAV files or base64-encoded raw PCM data."
+                 Tools for audio playback via WAV files or base64-encoded raw PCM data. \
+                 Tools for PipeWire node volume/mute, device profile switching, \
+                 and default endpoint configuration via metadata."
                     .to_string(),
             ),
             ..Default::default()
@@ -408,6 +621,32 @@ impl ServerHandler for PawlsaServer {
                     icons: None,
                 }
                 .no_annotation(),
+                RawResource {
+                    uri: "pawlsa://pw/metadata".into(),
+                    name: "PipeWire Metadata".into(),
+                    title: None,
+                    description: Some(
+                        "PipeWire metadata objects (default endpoints, route settings)"
+                            .into(),
+                    ),
+                    mime_type: Some("text/plain".into()),
+                    size: None,
+                    icons: None,
+                }
+                .no_annotation(),
+                RawResource {
+                    uri: "pawlsa://pw/devices".into(),
+                    name: "PipeWire Devices".into(),
+                    title: None,
+                    description: Some(
+                        "PipeWire devices with active profile and available profiles/routes"
+                            .into(),
+                    ),
+                    mime_type: Some("text/plain".into()),
+                    size: None,
+                    icons: None,
+                }
+                .no_annotation(),
             ];
             Ok(ListResourcesResult {
                 resources,
@@ -457,6 +696,26 @@ impl ServerHandler for PawlsaServer {
                     title: None,
                     description: Some("Detail for a specific PipeWire node".to_string()),
                     mime_type: Some("application/json".to_string()),
+                }
+                .no_annotation(),
+                RawResourceTemplate {
+                    uri_template: "pawlsa://pw/metadata/{id}".to_string(),
+                    name: "PipeWire Metadata Detail".to_string(),
+                    title: None,
+                    description: Some(
+                        "All properties for a specific PipeWire metadata object".to_string(),
+                    ),
+                    mime_type: Some("text/plain".to_string()),
+                }
+                .no_annotation(),
+                RawResourceTemplate {
+                    uri_template: "pawlsa://pw/devices/{id}".to_string(),
+                    name: "PipeWire Device Detail".to_string(),
+                    title: None,
+                    description: Some(
+                        "Detail for a PipeWire device with profiles and routes".to_string(),
+                    ),
+                    mime_type: Some("text/plain".to_string()),
                 }
                 .no_annotation(),
             ];
@@ -622,6 +881,82 @@ impl ServerHandler for PawlsaServer {
                         .destructive(false)
                         .open_world(false),
                 ),
+                Tool::new(
+                    "pw_set_default_endpoint",
+                    "Set the default audio sink or source via PipeWire metadata. Use pawlsa://pw/nodes to find node names.",
+                    tool_schema(json!({
+                        "type": "object",
+                        "properties": {
+                            "category": {
+                                "type": "string",
+                                "description": "Endpoint category",
+                                "enum": ["sink", "source"]
+                            },
+                            "node_name": { "type": "string", "description": "node.name of the target endpoint" }
+                        },
+                        "required": ["category", "node_name"]
+                    })),
+                )
+                .annotate(
+                    ToolAnnotations::new()
+                        .destructive(false)
+                        .idempotent(true)
+                        .open_world(false),
+                ),
+                Tool::new(
+                    "pw_node_set_volume",
+                    "Set volume on a PipeWire node (linear scale). Use pawlsa://pw/nodes to find node IDs.",
+                    tool_schema(json!({
+                        "type": "object",
+                        "properties": {
+                            "node_id": { "type": "integer", "description": "PipeWire node ID" },
+                            "volume": { "type": "number", "description": "Volume level (linear: 0.0 = silent, 1.0 = 100%, >1.0 = boost)" }
+                        },
+                        "required": ["node_id", "volume"]
+                    })),
+                )
+                .annotate(
+                    ToolAnnotations::new()
+                        .destructive(false)
+                        .idempotent(true)
+                        .open_world(false),
+                ),
+                Tool::new(
+                    "pw_node_set_mute",
+                    "Mute or unmute a PipeWire node. Use pawlsa://pw/nodes to find node IDs.",
+                    tool_schema(json!({
+                        "type": "object",
+                        "properties": {
+                            "node_id": { "type": "integer", "description": "PipeWire node ID" },
+                            "mute": { "type": "boolean", "description": "true = mute, false = unmute" }
+                        },
+                        "required": ["node_id", "mute"]
+                    })),
+                )
+                .annotate(
+                    ToolAnnotations::new()
+                        .destructive(false)
+                        .idempotent(true)
+                        .open_world(false),
+                ),
+                Tool::new(
+                    "pw_device_set_profile",
+                    "Set the active profile on a PipeWire device. Use pawlsa://pw/devices/{id} to see available profiles.",
+                    tool_schema(json!({
+                        "type": "object",
+                        "properties": {
+                            "device_id": { "type": "integer", "description": "PipeWire device ID" },
+                            "profile_index": { "type": "integer", "description": "Profile index to activate" }
+                        },
+                        "required": ["device_id", "profile_index"]
+                    })),
+                )
+                .annotate(
+                    ToolAnnotations::new()
+                        .destructive(false)
+                        .idempotent(true)
+                        .open_world(false),
+                ),
             ];
             Ok(ListToolsResult {
                 tools,
@@ -645,6 +980,10 @@ impl ServerHandler for PawlsaServer {
                 "mixer_set_switch" => self.tool_mixer_set_switch(&args),
                 "play_wav" => self.tool_play_wav(&args).await,
                 "play_pcm" => self.tool_play_pcm(&args).await,
+                "pw_set_default_endpoint" => self.tool_pw_set_default_endpoint(&args).await,
+                "pw_node_set_volume" => self.tool_pw_node_set_volume(&args).await,
+                "pw_node_set_mute" => self.tool_pw_node_set_mute(&args).await,
+                "pw_device_set_profile" => self.tool_pw_device_set_profile(&args).await,
                 _ => Err(ErrorData::invalid_params(
                     format!("unknown tool: {}", request.name),
                     None,
