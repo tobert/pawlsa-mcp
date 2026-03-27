@@ -66,22 +66,22 @@ impl PawlsaServer {
                         let text = alsa::cards::card_detail(index).map_err(err)?;
                         let uri = format!("pawlsa://alsa/cards/{index}");
                         Ok(ReadResourceResult {
-                            contents: vec![json_resource(text, uri)],
+                            contents: vec![text_resource(text, uri)],
                         })
                     } else if let Some(category) = path.strip_prefix("devices/") {
                         let text = alsa::devices::list_device_hints(category).map_err(err)?;
                         let uri = format!("pawlsa://alsa/devices/{category}");
                         Ok(ReadResourceResult {
-                            contents: vec![json_resource(text, uri)],
+                            contents: vec![text_resource(text, uri)],
                         })
                     } else if let Some(rest) = path.strip_prefix("mixer/") {
                         let card_index: i32 = rest
                             .parse()
                             .map_err(|_| ErrorData::invalid_params("invalid card index", None))?;
-                        let text = alsa::mixer::read_mixer_json(card_index).map_err(err)?;
+                        let text = alsa::mixer::read_mixer_formatted(card_index).map_err(err)?;
                         let uri = format!("pawlsa://alsa/mixer/{card_index}");
                         Ok(ReadResourceResult {
-                            contents: vec![json_resource(text, uri)],
+                            contents: vec![text_resource(text, uri)],
                         })
                     } else {
                         Err(ErrorData::resource_not_found(
@@ -125,7 +125,7 @@ impl PawlsaServer {
                     })?;
                     let uri = format!("pawlsa://pw/nodes/{id}");
                     Ok(ReadResourceResult {
-                        contents: vec![json_resource(text, uri)],
+                        contents: vec![text_resource(text, uri)],
                     })
                 } else if let Some(rest) = path.strip_prefix("metadata/") {
                     let id: u32 = rest
@@ -153,7 +153,7 @@ impl PawlsaServer {
                     })?;
                     let uri = format!("pawlsa://pw/devices/{id}");
                     Ok(ReadResourceResult {
-                        contents: vec![json_resource(text, uri)],
+                        contents: vec![text_resource(text, uri)],
                     })
                 } else {
                     Err(ErrorData::resource_not_found(
@@ -681,7 +681,7 @@ impl ServerHandler for PawlsaServer {
                     name: "ALSA Card Detail".to_string(),
                     title: None,
                     description: Some("Detail for ALSA card N (PCM devices, controls)".to_string()),
-                    mime_type: Some("application/json".to_string()),
+                    mime_type: Some("text/plain".to_string()),
                 }
                 .no_annotation(),
                 RawResourceTemplate {
@@ -691,7 +691,7 @@ impl ServerHandler for PawlsaServer {
                     description: Some(
                         "Device hints for category (pcm, rawmidi, seq, ctl)".to_string(),
                     ),
-                    mime_type: Some("application/json".to_string()),
+                    mime_type: Some("text/plain".to_string()),
                 }
                 .no_annotation(),
                 RawResourceTemplate {
@@ -701,7 +701,7 @@ impl ServerHandler for PawlsaServer {
                     description: Some(
                         "Mixer elements (volume, mute, switches) for a card".to_string(),
                     ),
-                    mime_type: Some("application/json".to_string()),
+                    mime_type: Some("text/plain".to_string()),
                 }
                 .no_annotation(),
                 RawResourceTemplate {
@@ -709,7 +709,7 @@ impl ServerHandler for PawlsaServer {
                     name: "PipeWire Node Detail".to_string(),
                     title: None,
                     description: Some("Detail for a specific PipeWire node".to_string()),
-                    mime_type: Some("application/json".to_string()),
+                    mime_type: Some("text/plain".to_string()),
                 }
                 .no_annotation(),
                 RawResourceTemplate {
@@ -729,7 +729,7 @@ impl ServerHandler for PawlsaServer {
                     description: Some(
                         "Detail for a PipeWire device with profiles and routes".to_string(),
                     ),
-                    mime_type: Some("application/json".to_string()),
+                    mime_type: Some("text/plain".to_string()),
                 }
                 .no_annotation(),
             ];

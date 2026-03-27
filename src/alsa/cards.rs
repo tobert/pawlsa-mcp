@@ -1,16 +1,14 @@
 use anyhow::Result;
-use serde::Serialize;
 
 use crate::format::Table;
 
-#[derive(Clone, Serialize)]
+#[derive(Clone)]
 pub struct AlsaCard {
     pub index: i32,
     pub name: String,
     pub longname: String,
 }
 
-#[derive(Serialize)]
 struct PcmDevice {
     device: u32,
     name: String,
@@ -56,30 +54,36 @@ pub fn card_detail(index: i32) -> Result<String> {
     let ctl = alsa::Ctl::from_card(&card, false)?;
     let info = ctl.card_info()?;
 
-    #[derive(Serialize)]
-    struct CardDetail {
-        index: i32,
-        name: String,
-        longname: String,
-        driver: String,
-        mixer: String,
-        components: String,
-        playback_devices: Vec<PcmDevice>,
-        capture_devices: Vec<PcmDevice>,
+    let mut out = format!(
+        "card {}, {}, {}, driver:{}, mixer:{}, components:{}",
+        index,
+        info.get_name()?,
+        info.get_longname()?,
+        info.get_driver()?,
+        info.get_mixername()?,
+        info.get_components()?,
+    );
+
+    let pb = enumerate_pcm_devices(&ctl, alsa::Direction::Playback);
+    let cap = enumerate_pcm_devices(&ctl, alsa::Direction::Capture);
+
+    if !pb.is_empty() || !cap.is_empty() {
+        out.push_str(" ▌ dir, dev, id, name, subdevs");
+        for d in &pb {
+            out.push_str(&format!(
+                " ▌ playback, {}, {}, {}, {}/{}",
+                d.device, d.id, d.name, d.subdevices_avail, d.subdevices_count
+            ));
+        }
+        for d in &cap {
+            out.push_str(&format!(
+                " ▌ capture, {}, {}, {}, {}/{}",
+                d.device, d.id, d.name, d.subdevices_avail, d.subdevices_count
+            ));
+        }
     }
 
-    let detail = CardDetail {
-        index,
-        name: info.get_name()?.to_string(),
-        longname: info.get_longname()?.to_string(),
-        driver: info.get_driver()?.to_string(),
-        mixer: info.get_mixername()?.to_string(),
-        components: info.get_components()?.to_string(),
-        playback_devices: enumerate_pcm_devices(&ctl, alsa::Direction::Playback),
-        capture_devices: enumerate_pcm_devices(&ctl, alsa::Direction::Capture),
-    };
-
-    Ok(serde_json::to_string_pretty(&detail)?)
+    Ok(out)
 }
 
 pub fn list_cards_formatted() -> Result<String> {

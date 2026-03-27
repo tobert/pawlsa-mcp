@@ -1,9 +1,6 @@
 use anyhow::Result;
-use serde::Serialize;
-
 use crate::format::Table;
 
-#[derive(Serialize)]
 struct ChannelVolume {
     channel: String,
     volume: i64,
@@ -11,7 +8,6 @@ struct ChannelVolume {
     switch: Option<bool>,
 }
 
-#[derive(Serialize)]
 struct MixerElement {
     name: String,
     playback_volume_range: Option<(i64, i64)>,
@@ -114,8 +110,7 @@ fn read_mixer(card_index: i32) -> Result<Vec<MixerElement>> {
     Ok(elements)
 }
 
-#[allow(dead_code)]
-fn read_mixer_formatted(card_index: i32) -> Result<String> {
+pub fn read_mixer_formatted(card_index: i32) -> Result<String> {
     let elements = read_mixer(card_index)?;
     let mut t = Table::new(&["element", "channel", "vol", "range", "dB", "muted"]);
     for e in &elements {
@@ -146,11 +141,6 @@ fn read_mixer_formatted(card_index: i32) -> Result<String> {
         }
     }
     Ok(t.render())
-}
-
-pub fn read_mixer_json(card_index: i32) -> Result<String> {
-    let elements = read_mixer(card_index)?;
-    Ok(serde_json::to_string_pretty(&elements)?)
 }
 
 fn parse_channel(name: &str) -> alsa::mixer::SelemChannelId {

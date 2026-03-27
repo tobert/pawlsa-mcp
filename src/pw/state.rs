@@ -137,7 +137,36 @@ impl PwState {
 
     pub fn format_node(&self, id: u32) -> Option<String> {
         let n = self.nodes.get(&id)?;
-        serde_json::to_string_pretty(n).ok()
+        let vol = n.volume.map(|v| format!("{v:.3}")).unwrap_or_default();
+        let mute = n.mute.map(|m| m.to_string()).unwrap_or_default();
+        let mut out = format!(
+            "id, state, media.class, node.name, node.description, ports(in/out), vol, mute ▌ \
+             {}, {}, {}, {}, {}, {}/{}, {}, {}",
+            n.id,
+            n.state,
+            Self::prop(&n.props, "media.class"),
+            Self::prop(&n.props, "node.name"),
+            Self::prop(&n.props, "node.description"),
+            n.n_input_ports,
+            n.n_output_ports,
+            vol,
+            mute,
+        );
+        // Channel volumes
+        if let Some(ref cvols) = n.channel_volumes {
+            let formatted: Vec<String> = cvols.iter().map(|v| format!("{v:.3}")).collect();
+            out.push_str(&format!(" ▌ channel_volumes: [{}]", formatted.join(", ")));
+        }
+        // Include all props for single-node detail
+        if !n.props.is_empty() {
+            out.push_str(" ▌ key, value");
+            let mut keys: Vec<_> = n.props.keys().collect();
+            keys.sort();
+            for k in keys {
+                out.push_str(&format!(" ▌ {}, {}", k, n.props[k]));
+            }
+        }
+        Some(out)
     }
 
     pub fn format_ports(&self) -> String {
@@ -219,7 +248,7 @@ impl PwState {
             subjects,
         };
         
-        serde_json::to_string_pretty(&detail).ok()
+        serde_json::to_string(&detail).ok()
     }
 
     pub fn format_devices(&self) -> String {
@@ -260,7 +289,54 @@ impl PwState {
 
     pub fn format_device(&self, id: u32) -> Option<String> {
         let d = self.devices.get(&id)?;
-        serde_json::to_string_pretty(d).ok()
+        let active_desc = d
+            .active_profile_index
+            .and_then(|idx| d.profiles.iter().find(|p| p.index == idx))
+            .map(|p| p.description.clone())
+            .unwrap_or_else(|| "N/A".to_string());
+        let mut out = format!(
+            "id, device.name, media.class, active_profile ▌ {}, {}, {}, {}",
+            d.id,
+            Self::prop(&d.props, "device.name"),
+            Self::prop(&d.props, "media.class"),
+            active_desc,
+        );
+        // Props
+        if !d.props.is_empty() {
+            out.push_str(" ▌ key, value");
+            let mut keys: Vec<_> = d.props.keys().collect();
+            keys.sort();
+            for k in keys {
+                out.push_str(&format!(" ▌ {}, {}", k, d.props[k]));
+            }
+        }
+        // Profiles
+        if !d.profiles.is_empty() {
+            out.push_str(" ▌ --- profiles --- ▌ index, name, description, priority, available, active");
+            let mut profiles = d.profiles.clone();
+            profiles.sort_by_key(|p| p.index);
+            for p in &profiles {
+                let active = d.active_profile_index == Some(p.index);
+                out.push_str(&format!(
+                    " ▌ {}, {}, {}, {}, {}, {}",
+                    p.index, p.name, p.description, p.priority, p.available, active
+                ));
+            }
+        }
+        // Routes
+        if !d.routes.is_empty() {
+            out.push_str(" ▌ --- routes --- ▌ index, direction, name, description, available, active");
+            let mut routes = d.routes.clone();
+            routes.sort_by_key(|r| r.index);
+            for r in &routes {
+                let active = d.active_routes.contains(&r.index);
+                out.push_str(&format!(
+                    " ▌ {}, {}, {}, {}, {}, {}",
+                    r.index, r.direction, r.name, r.description, r.available, active
+                ));
+            }
+        }
+        Some(out)
     }
 
     pub fn format_links(&self) -> String {
