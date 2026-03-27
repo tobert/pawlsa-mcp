@@ -18,6 +18,15 @@ fn text_resource(text: String, uri: impl Into<String>) -> ResourceContents {
     }
 }
 
+fn json_resource(text: String, uri: impl Into<String>) -> ResourceContents {
+    ResourceContents::TextResourceContents {
+        uri: uri.into(),
+        mime_type: Some("application/json".to_string()),
+        text,
+        meta: None,
+    }
+}
+
 pub struct PawlsaServer {
     pw_state: Arc<RwLock<PwState>>,
     pw_cmd: pipewire::channel::Sender<PwCommand>,
@@ -31,55 +40,60 @@ impl PawlsaServer {
         Self { pw_state, pw_cmd }
     }
 
-    fn read_alsa_resource(&self, path: &str) -> Result<ReadResourceResult, ErrorData> {
+    async fn read_alsa_resource(&self, path: &str) -> Result<ReadResourceResult, ErrorData> {
         let err = |e: anyhow::Error| ErrorData::internal_error(e.to_string(), None);
+        let path = path.to_string();
 
-        match path {
-            "cards" => {
-                let text = alsa::cards::list_cards_formatted().map_err(err)?;
-                Ok(ReadResourceResult {
-                    contents: vec![text_resource(text, "pawlsa://alsa/cards")],
-                })
-            }
-            "midi/ports" => {
-                let text = alsa::midi::list_midi_ports().map_err(err)?;
-                Ok(ReadResourceResult {
-                    contents: vec![text_resource(text, "pawlsa://alsa/midi/ports")],
-                })
-            }
-            _ => {
-                if let Some(rest) = path.strip_prefix("cards/") {
-                    let index: i32 = rest
-                        .parse()
-                        .map_err(|_| ErrorData::invalid_params("invalid card index", None))?;
-                    let text = alsa::cards::card_detail(index).map_err(err)?;
-                    let uri = format!("pawlsa://alsa/cards/{index}");
+        tokio::task::spawn_blocking(move || {
+            match path.as_str() {
+                "cards" => {
+                    let text = alsa::cards::list_cards_formatted().map_err(err)?;
                     Ok(ReadResourceResult {
-                        contents: vec![text_resource(text, uri)],
+                        contents: vec![text_resource(text, "pawlsa://alsa/cards")],
                     })
-                } else if let Some(category) = path.strip_prefix("devices/") {
-                    let text = alsa::devices::list_device_hints(category).map_err(err)?;
-                    let uri = format!("pawlsa://alsa/devices/{category}");
+                }
+                "midi/ports" => {
+                    let text = alsa::midi::list_midi_ports().map_err(err)?;
                     Ok(ReadResourceResult {
-                        contents: vec![text_resource(text, uri)],
+                        contents: vec![text_resource(text, "pawlsa://alsa/midi/ports")],
                     })
-                } else if let Some(rest) = path.strip_prefix("mixer/") {
-                    let card_index: i32 = rest
-                        .parse()
-                        .map_err(|_| ErrorData::invalid_params("invalid card index", None))?;
-                    let text = alsa::mixer::read_mixer_formatted(card_index).map_err(err)?;
-                    let uri = format!("pawlsa://alsa/mixer/{card_index}");
-                    Ok(ReadResourceResult {
-                        contents: vec![text_resource(text, uri)],
-                    })
-                } else {
-                    Err(ErrorData::resource_not_found(
-                        format!("unknown alsa resource: {path}"),
-                        None,
-                    ))
+                }
+                _ => {
+                    if let Some(rest) = path.strip_prefix("cards/") {
+                        let index: i32 = rest
+                            .parse()
+                            .map_err(|_| ErrorData::invalid_params("invalid card index", None))?;
+                        let text = alsa::cards::card_detail(index).map_err(err)?;
+                        let uri = format!("pawlsa://alsa/cards/{index}");
+                        Ok(ReadResourceResult {
+                            contents: vec![json_resource(text, uri)],
+                        })
+                    } else if let Some(category) = path.strip_prefix("devices/") {
+                        let text = alsa::devices::list_device_hints(category).map_err(err)?;
+                        let uri = format!("pawlsa://alsa/devices/{category}");
+                        Ok(ReadResourceResult {
+                            contents: vec![json_resource(text, uri)],
+                        })
+                    } else if let Some(rest) = path.strip_prefix("mixer/") {
+                        let card_index: i32 = rest
+                            .parse()
+                            .map_err(|_| ErrorData::invalid_params("invalid card index", None))?;
+                        let text = alsa::mixer::read_mixer_json(card_index).map_err(err)?;
+                        let uri = format!("pawlsa://alsa/mixer/{card_index}");
+                        Ok(ReadResourceResult {
+                            contents: vec![json_resource(text, uri)],
+                        })
+                    } else {
+                        Err(ErrorData::resource_not_found(
+                            format!("unknown alsa resource: {path}"),
+                            None,
+                        ))
+                    }
                 }
             }
-        }
+        })
+        .await
+        .map_err(|e| ErrorData::internal_error(format!("task panicked: {e}"), None))?
     }
 
     fn read_pw_resource(&self, path: &str) -> Result<ReadResourceResult, ErrorData> {
@@ -111,7 +125,7 @@ impl PawlsaServer {
                     })?;
                     let uri = format!("pawlsa://pw/nodes/{id}");
                     Ok(ReadResourceResult {
-                        contents: vec![text_resource(text, uri)],
+                        contents: vec![json_resource(text, uri)],
                     })
                 } else if let Some(rest) = path.strip_prefix("metadata/") {
                     let id: u32 = rest
@@ -125,7 +139,7 @@ impl PawlsaServer {
                     })?;
                     let uri = format!("pawlsa://pw/metadata/{id}");
                     Ok(ReadResourceResult {
-                        contents: vec![text_resource(text, uri)],
+                        contents: vec![json_resource(text, uri)],
                     })
                 } else if let Some(rest) = path.strip_prefix("devices/") {
                     let id: u32 = rest
@@ -139,7 +153,7 @@ impl PawlsaServer {
                     })?;
                     let uri = format!("pawlsa://pw/devices/{id}");
                     Ok(ReadResourceResult {
-                        contents: vec![text_resource(text, uri)],
+                        contents: vec![json_resource(text, uri)],
                     })
                 } else {
                     Err(ErrorData::resource_not_found(
@@ -705,7 +719,7 @@ impl ServerHandler for PawlsaServer {
                     description: Some(
                         "All properties for a specific PipeWire metadata object".to_string(),
                     ),
-                    mime_type: Some("text/plain".to_string()),
+                    mime_type: Some("application/json".to_string()),
                 }
                 .no_annotation(),
                 RawResourceTemplate {
@@ -715,7 +729,7 @@ impl ServerHandler for PawlsaServer {
                     description: Some(
                         "Detail for a PipeWire device with profiles and routes".to_string(),
                     ),
-                    mime_type: Some("text/plain".to_string()),
+                    mime_type: Some("application/json".to_string()),
                 }
                 .no_annotation(),
             ];
@@ -738,7 +752,7 @@ impl ServerHandler for PawlsaServer {
             })?;
 
             if let Some(alsa_path) = path.strip_prefix("alsa/") {
-                self.read_alsa_resource(alsa_path)
+                self.read_alsa_resource(alsa_path).await
             } else if let Some(pw_path) = path.strip_prefix("pw/") {
                 self.read_pw_resource(pw_path)
             } else {
