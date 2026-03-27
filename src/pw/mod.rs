@@ -509,6 +509,11 @@ fn parse_float_array(pod: &pw::spa::pod::Pod) -> Option<Vec<f32>> {
         if pod_raw.type_ != pw::spa::sys::SPA_TYPE_Array {
             return None;
         }
+        let child_header_size = std::mem::size_of::<pw::spa::sys::spa_pod>();
+        // Body must be large enough to contain the child type header
+        if (pod_raw.size as usize) < child_header_size {
+            return None;
+        }
         let body_ptr = (bytes as *const u8).add(std::mem::size_of::<pw::spa::sys::spa_pod>());
         // First 8 bytes of body is the child pod header (type + size)
         let child_pod = &*(body_ptr as *const pw::spa::sys::spa_pod);
@@ -516,12 +521,12 @@ fn parse_float_array(pod: &pw::spa::pod::Pod) -> Option<Vec<f32>> {
             return None;
         }
         let child_size = child_pod.size as usize;
-        if child_size == 0 || child_size != 4 {
+        if child_size != 4 {
             return None;
         }
         // Data starts after child header
-        let data_ptr = body_ptr.add(std::mem::size_of::<pw::spa::sys::spa_pod>());
-        let total_data = pod_raw.size as usize - std::mem::size_of::<pw::spa::sys::spa_pod>();
+        let data_ptr = body_ptr.add(child_header_size);
+        let total_data = pod_raw.size as usize - child_header_size;
         let n_elements = total_data / child_size;
         let mut result = Vec::with_capacity(n_elements);
         for i in 0..n_elements {
@@ -762,9 +767,10 @@ fn bind_device(
                 snap.props = props;
             }
         })
-        .param(move |_seq, param_id, _index, _next, param| {
+        .param(move |_seq, param_id, index, _next, param| {
             if let Some(pod) = param {
-                parse_device_param(param_id, pod, &state_param, id);
+                parse_device_param(param_id, index, pod, &state_param, id);
+
             }
         })
         .register();
@@ -791,6 +797,7 @@ fn bind_device(
 
 fn parse_device_param(
     param_id: pw::spa::param::ParamType,
+    param_index: u32,
     pod: &pw::spa::pod::Pod,
     state: &Arc<RwLock<PwState>>,
     device_id: u32,
@@ -850,8 +857,10 @@ fn parse_device_param(
 
             let mut st = state.write().unwrap();
             if let Some(snap) = st.devices.get_mut(&device_id) {
-                // EnumProfile gives us all profiles one by one; accumulate
-                if !snap.profiles.iter().any(|p| p.index == index) {
+                // Update existing profile or insert new one
+                if let Some(existing) = snap.profiles.iter_mut().find(|p| p.index == index) {
+                    *existing = profile;
+                } else {
                     snap.profiles.push(profile);
                 }
             }
@@ -923,19 +932,25 @@ fn parse_device_param(
 
             let mut st = state.write().unwrap();
             if let Some(snap) = st.devices.get_mut(&device_id) {
-                if !snap.routes.iter().any(|r| r.index == index) {
+                // Update existing route or insert new one
+                if let Some(existing) = snap.routes.iter_mut().find(|r| r.index == index) {
+                    *existing = route;
+                } else {
                     snap.routes.push(route);
                 }
             }
         }
         pw::spa::param::ParamType::Route => {
-            // Active route
+            // Active route — param_index == 0 signals start of a new batch
             for prop in obj.props() {
                 if prop.key().0 == pw::spa::sys::SPA_PARAM_ROUTE_index {
                     if let Ok(v) = prop.value().get_int() {
                         let idx = v as u32;
                         let mut st = state.write().unwrap();
                         if let Some(snap) = st.devices.get_mut(&device_id) {
+                            if param_index == 0 {
+                                snap.active_routes.clear();
+                            }
                             if !snap.active_routes.contains(&idx) {
                                 snap.active_routes.push(idx);
                             }
