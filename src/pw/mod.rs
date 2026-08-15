@@ -436,10 +436,10 @@ fn bind_node(
             );
         })
         .param(move |_seq, param_id, _index, _next, param| {
-            if param_id == pw::spa::param::ParamType::Props {
-                if let Some(pod) = param {
-                    parse_node_props(pod, &state_param, id);
-                }
+            if param_id == pw::spa::param::ParamType::Props
+                && let Some(pod) = param
+            {
+                parse_node_props(pod, &state_param, id);
             }
         })
         .register();
@@ -468,12 +468,9 @@ fn parse_node_props(pod: &pw::spa::pod::Pod, state: &Arc<RwLock<PwState>>, node_
             pw::spa::sys::SPA_PROP_mute => {
                 mute = prop.value().get_bool().ok();
             }
-            pw::spa::sys::SPA_PROP_channelVolumes => {
+            pw::spa::sys::SPA_PROP_channelVolumes if prop.value().is_array() => {
                 // channelVolumes is an array of f32 pods
-                if prop.value().is_array() {
-                    // Parse by iterating the raw array pod
-                    channel_volumes = parse_float_array(prop.value());
-                }
+                channel_volumes = parse_float_array(prop.value());
             }
             _ => {}
         }
@@ -868,12 +865,12 @@ fn parse_device_param(
         pw::spa::param::ParamType::Profile => {
             // Active profile
             for prop in obj.props() {
-                if prop.key().0 == pw::spa::sys::SPA_PARAM_PROFILE_index {
-                    if let Ok(v) = prop.value().get_int() {
-                        let mut st = state.write().unwrap();
-                        if let Some(snap) = st.devices.get_mut(&device_id) {
-                            snap.active_profile_index = Some(v as u32);
-                        }
+                if prop.key().0 == pw::spa::sys::SPA_PARAM_PROFILE_index
+                    && let Ok(v) = prop.value().get_int()
+                {
+                    let mut st = state.write().unwrap();
+                    if let Some(snap) = st.devices.get_mut(&device_id) {
+                        snap.active_profile_index = Some(v as u32);
                     }
                 }
             }
@@ -943,17 +940,17 @@ fn parse_device_param(
         pw::spa::param::ParamType::Route => {
             // Active route — param_index == 0 signals start of a new batch
             for prop in obj.props() {
-                if prop.key().0 == pw::spa::sys::SPA_PARAM_ROUTE_index {
-                    if let Ok(v) = prop.value().get_int() {
-                        let idx = v as u32;
-                        let mut st = state.write().unwrap();
-                        if let Some(snap) = st.devices.get_mut(&device_id) {
-                            if param_index == 0 {
-                                snap.active_routes.clear();
-                            }
-                            if !snap.active_routes.contains(&idx) {
-                                snap.active_routes.push(idx);
-                            }
+                if prop.key().0 == pw::spa::sys::SPA_PARAM_ROUTE_index
+                    && let Ok(v) = prop.value().get_int()
+                {
+                    let idx = v as u32;
+                    let mut st = state.write().unwrap();
+                    if let Some(snap) = st.devices.get_mut(&device_id) {
+                        if param_index == 0 {
+                            snap.active_routes.clear();
+                        }
+                        if !snap.active_routes.contains(&idx) {
+                            snap.active_routes.push(idx);
                         }
                     }
                 }

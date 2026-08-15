@@ -73,7 +73,7 @@ fn parse_wav(raw: &[u8]) -> Result<WavInfo> {
 
         pos += 8 + chunk_size;
         // RIFF chunks are word-aligned
-        if chunk_size % 2 != 0 {
+        if !chunk_size.is_multiple_of(2) {
             pos += 1;
         }
     }

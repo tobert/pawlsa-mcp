@@ -10,21 +10,11 @@ use crate::pw::PwCommand;
 use crate::pw::state::PwState;
 
 fn text_resource(text: String, uri: impl Into<String>) -> ResourceContents {
-    ResourceContents::TextResourceContents {
-        uri: uri.into(),
-        mime_type: Some("text/plain".to_string()),
-        text,
-        meta: None,
-    }
+    ResourceContents::text(text, uri)
 }
 
 fn json_resource(text: String, uri: impl Into<String>) -> ResourceContents {
-    ResourceContents::TextResourceContents {
-        uri: uri.into(),
-        mime_type: Some("application/json".to_string()),
-        text,
-        meta: None,
-    }
+    ResourceContents::text(text, uri).with_mime_type("application/json")
 }
 
 pub struct PawlsaServer {
@@ -48,15 +38,11 @@ impl PawlsaServer {
             match path.as_str() {
                 "cards" => {
                     let text = alsa::cards::list_cards_formatted().map_err(err)?;
-                    Ok(ReadResourceResult {
-                        contents: vec![text_resource(text, "pawlsa://alsa/cards")],
-                    })
+                    Ok(ReadResourceResult::new(vec![text_resource(text, "pawlsa://alsa/cards")]))
                 }
                 "midi/ports" => {
                     let text = alsa::midi::list_midi_ports().map_err(err)?;
-                    Ok(ReadResourceResult {
-                        contents: vec![text_resource(text, "pawlsa://alsa/midi/ports")],
-                    })
+                    Ok(ReadResourceResult::new(vec![text_resource(text, "pawlsa://alsa/midi/ports")]))
                 }
                 _ => {
                     if let Some(rest) = path.strip_prefix("cards/") {
@@ -65,24 +51,18 @@ impl PawlsaServer {
                             .map_err(|_| ErrorData::invalid_params("invalid card index", None))?;
                         let text = alsa::cards::card_detail(index).map_err(err)?;
                         let uri = format!("pawlsa://alsa/cards/{index}");
-                        Ok(ReadResourceResult {
-                            contents: vec![text_resource(text, uri)],
-                        })
+                        Ok(ReadResourceResult::new(vec![text_resource(text, uri)]))
                     } else if let Some(category) = path.strip_prefix("devices/") {
                         let text = alsa::devices::list_device_hints(category).map_err(err)?;
                         let uri = format!("pawlsa://alsa/devices/{category}");
-                        Ok(ReadResourceResult {
-                            contents: vec![text_resource(text, uri)],
-                        })
+                        Ok(ReadResourceResult::new(vec![text_resource(text, uri)]))
                     } else if let Some(rest) = path.strip_prefix("mixer/") {
                         let card_index: i32 = rest
                             .parse()
                             .map_err(|_| ErrorData::invalid_params("invalid card index", None))?;
                         let text = alsa::mixer::read_mixer_formatted(card_index).map_err(err)?;
                         let uri = format!("pawlsa://alsa/mixer/{card_index}");
-                        Ok(ReadResourceResult {
-                            contents: vec![text_resource(text, uri)],
-                        })
+                        Ok(ReadResourceResult::new(vec![text_resource(text, uri)]))
                     } else {
                         Err(ErrorData::resource_not_found(
                             format!("unknown alsa resource: {path}"),
@@ -100,21 +80,11 @@ impl PawlsaServer {
         let st = self.pw_state.read().unwrap();
 
         match path {
-            "nodes" => Ok(ReadResourceResult {
-                contents: vec![text_resource(st.format_nodes(), "pawlsa://pw/nodes")],
-            }),
-            "ports" => Ok(ReadResourceResult {
-                contents: vec![text_resource(st.format_ports(), "pawlsa://pw/ports")],
-            }),
-            "links" => Ok(ReadResourceResult {
-                contents: vec![text_resource(st.format_links(), "pawlsa://pw/links")],
-            }),
-            "metadata" => Ok(ReadResourceResult {
-                contents: vec![text_resource(st.format_metadata(), "pawlsa://pw/metadata")],
-            }),
-            "devices" => Ok(ReadResourceResult {
-                contents: vec![text_resource(st.format_devices(), "pawlsa://pw/devices")],
-            }),
+            "nodes" => Ok(ReadResourceResult::new(vec![text_resource(st.format_nodes(), "pawlsa://pw/nodes")])),
+            "ports" => Ok(ReadResourceResult::new(vec![text_resource(st.format_ports(), "pawlsa://pw/ports")])),
+            "links" => Ok(ReadResourceResult::new(vec![text_resource(st.format_links(), "pawlsa://pw/links")])),
+            "metadata" => Ok(ReadResourceResult::new(vec![text_resource(st.format_metadata(), "pawlsa://pw/metadata")])),
+            "devices" => Ok(ReadResourceResult::new(vec![text_resource(st.format_devices(), "pawlsa://pw/devices")])),
             _ => {
                 if let Some(rest) = path.strip_prefix("nodes/") {
                     let id: u32 = rest
@@ -124,9 +94,7 @@ impl PawlsaServer {
                         ErrorData::resource_not_found(format!("pw node {id} not found"), None)
                     })?;
                     let uri = format!("pawlsa://pw/nodes/{id}");
-                    Ok(ReadResourceResult {
-                        contents: vec![text_resource(text, uri)],
-                    })
+                    Ok(ReadResourceResult::new(vec![text_resource(text, uri)]))
                 } else if let Some(rest) = path.strip_prefix("metadata/") {
                     let id: u32 = rest
                         .parse()
@@ -138,9 +106,7 @@ impl PawlsaServer {
                         )
                     })?;
                     let uri = format!("pawlsa://pw/metadata/{id}");
-                    Ok(ReadResourceResult {
-                        contents: vec![json_resource(text, uri)],
-                    })
+                    Ok(ReadResourceResult::new(vec![json_resource(text, uri)]))
                 } else if let Some(rest) = path.strip_prefix("devices/") {
                     let id: u32 = rest
                         .parse()
@@ -152,9 +118,7 @@ impl PawlsaServer {
                         )
                     })?;
                     let uri = format!("pawlsa://pw/devices/{id}");
-                    Ok(ReadResourceResult {
-                        contents: vec![text_resource(text, uri)],
-                    })
+                    Ok(ReadResourceResult::new(vec![text_resource(text, uri)]))
                 } else {
                     Err(ErrorData::resource_not_found(
                         format!("unknown pw resource: {path}"),
@@ -204,10 +168,10 @@ impl PawlsaServer {
             .map_err(|_| ErrorData::internal_error("pw thread dropped reply", None))?;
 
         match result {
-            Ok(id) => Ok(CallToolResult::success(vec![Content::text(format!(
+            Ok(id) => Ok(CallToolResult::success(vec![ContentBlock::text(format!(
                 "Link created: id={id} ({output_node}:{output_port} → {input_node}:{input_port})"
             ))])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -229,10 +193,10 @@ impl PawlsaServer {
             .map_err(|_| ErrorData::internal_error("pw thread dropped reply", None))?;
 
         match result {
-            Ok(()) => Ok(CallToolResult::success(vec![Content::text(format!(
+            Ok(()) => Ok(CallToolResult::success(vec![ContentBlock::text(format!(
                 "Link {id} destroyed"
             ))])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -252,7 +216,7 @@ impl PawlsaServer {
         alsa::mixer::set_volume(card_index, element_name, volume, channel)
             .map_err(|e| ErrorData::internal_error(format!("set_volume: {e}"), None))?;
 
-        Ok(CallToolResult::success(vec![Content::text(format!(
+        Ok(CallToolResult::success(vec![ContentBlock::text(format!(
             "Volume set: card={card_index} element={element_name} volume={volume}{}",
             channel.map_or(String::new(), |c| format!(" channel={c}"))
         ))]))
@@ -275,7 +239,7 @@ impl PawlsaServer {
             .map_err(|e| ErrorData::internal_error(format!("set_switch: {e}"), None))?;
 
         let state_str = if on { "unmuted" } else { "muted" };
-        Ok(CallToolResult::success(vec![Content::text(format!(
+        Ok(CallToolResult::success(vec![ContentBlock::text(format!(
             "Switch set: card={card_index} element={element_name} {state_str}{}",
             channel.map_or(String::new(), |c| format!(" channel={c}"))
         ))]))
@@ -301,7 +265,7 @@ impl PawlsaServer {
         .map_err(|e| ErrorData::internal_error(format!("task panicked: {e}"), None))?
         .map_err(|e| ErrorData::internal_error(format!("{e:#}"), None))?;
 
-        Ok(CallToolResult::success(vec![Content::text(format!(
+        Ok(CallToolResult::success(vec![ContentBlock::text(format!(
             "Played {file_path}: {} frames ({} ms) at {} Hz, {} ch",
             result.frames_played, result.duration_ms, result.sample_rate, result.channels
         ))]))
@@ -342,7 +306,7 @@ impl PawlsaServer {
         .map_err(|e| ErrorData::internal_error(format!("task panicked: {e}"), None))?
         .map_err(|e| ErrorData::internal_error(format!("{e:#}"), None))?;
 
-        Ok(CallToolResult::success(vec![Content::text(format!(
+        Ok(CallToolResult::success(vec![ContentBlock::text(format!(
             "Played {} frames ({} ms) at {} Hz, {} ch",
             result.frames_played, result.duration_ms, result.sample_rate, result.channels
         ))]))
@@ -402,10 +366,10 @@ impl PawlsaServer {
             .map_err(|_| ErrorData::internal_error("pw thread dropped reply", None))?;
 
         match result {
-            Ok(()) => Ok(CallToolResult::success(vec![Content::text(format!(
+            Ok(()) => Ok(CallToolResult::success(vec![ContentBlock::text(format!(
                 "Default {category} set to {node_name}"
             ))])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -438,10 +402,10 @@ impl PawlsaServer {
             .map_err(|_| ErrorData::internal_error("pw thread dropped reply", None))?;
 
         match result {
-            Ok(()) => Ok(CallToolResult::success(vec![Content::text(format!(
+            Ok(()) => Ok(CallToolResult::success(vec![ContentBlock::text(format!(
                 "Volume set on node {node_id}: {volume:.3}"
             ))])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -472,10 +436,10 @@ impl PawlsaServer {
 
         let state_str = if mute { "muted" } else { "unmuted" };
         match result {
-            Ok(()) => Ok(CallToolResult::success(vec![Content::text(format!(
+            Ok(()) => Ok(CallToolResult::success(vec![ContentBlock::text(format!(
                 "Node {node_id} {state_str}"
             ))])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -519,11 +483,11 @@ impl PawlsaServer {
                     .and_then(|d| d.profiles.iter().find(|p| p.index == profile_index))
                     .map(|p| p.description.clone())
                     .unwrap_or_else(|| profile_index.to_string());
-                Ok(CallToolResult::success(vec![Content::text(format!(
+                Ok(CallToolResult::success(vec![ContentBlock::text(format!(
                     "Device {device_id} profile set to {desc} (index {profile_index})"
                 ))]))
             }
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 }
@@ -538,213 +502,103 @@ fn tool_schema(schema: serde_json::Value) -> std::sync::Arc<JsonObject> {
 #[allow(clippy::manual_async_fn)] // ServerHandler trait requires impl Future signatures
 impl ServerHandler for PawlsaServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            capabilities: ServerCapabilities {
-                resources: Some(ResourcesCapability {
-                    subscribe: None,
-                    list_changed: None,
-                }),
-                tools: Some(ToolsCapability { list_changed: None }),
-                ..Default::default()
-            },
-            server_info: Implementation {
-                name: "pawlsa-mcp".to_string(),
-                version: env!("CARGO_PKG_VERSION").to_string(),
-                title: None,
-                icons: None,
-                website_url: None,
-            },
-            instructions: Some(
-                "Linux audio system state: ALSA hardware/MIDI + PipeWire graph. \
-                 Tools for PipeWire link routing and ALSA mixer control. \
-                 Tools for audio playback via WAV files or base64-encoded raw PCM data. \
-                 Tools for PipeWire node volume/mute, device profile switching, \
-                 and default endpoint configuration via metadata."
-                    .to_string(),
-            ),
-            ..Default::default()
-        }
+        ServerInfo::new(
+            ServerCapabilities::builder()
+                .enable_resources()
+                .enable_tools()
+                .build(),
+        )
+        .with_server_info(Implementation::new("pawlsa-mcp", env!("CARGO_PKG_VERSION")))
+        .with_instructions(
+            "Linux audio system state: ALSA hardware/MIDI + PipeWire graph. \
+             Tools for PipeWire link routing and ALSA mixer control. \
+             Tools for audio playback via WAV files or base64-encoded raw PCM data. \
+             Tools for PipeWire node volume/mute, device profile switching, \
+             and default endpoint configuration via metadata.",
+        )
     }
 
     fn list_resources(
         &self,
-        _request: Option<PaginatedRequestParam>,
+        _request: Option<PaginatedRequestParams>,
         _context: rmcp::service::RequestContext<rmcp::service::RoleServer>,
     ) -> impl Future<Output = Result<ListResourcesResult, ErrorData>> + Send + '_ {
         async {
             let resources = vec![
-                RawResource {
-                    uri: "pawlsa://alsa/cards".into(),
-                    name: "ALSA Sound Cards".into(),
-                    title: None,
-                    description: Some("All ALSA sound cards with index, name, and longname".into()),
-                    mime_type: Some("text/plain".into()),
-                    size: None,
-                    icons: None,
-                }
-                .no_annotation(),
-                RawResource {
-                    uri: "pawlsa://alsa/midi/ports".into(),
-                    name: "MIDI Sequencer Clients/Ports".into(),
-                    title: None,
-                    description: Some(
-                        "ALSA sequencer clients and their ports with capabilities and type flags"
-                            .into(),
-                    ),
-                    mime_type: Some("text/plain".into()),
-                    size: None,
-                    icons: None,
-                }
-                .no_annotation(),
-                RawResource {
-                    uri: "pawlsa://pw/nodes".into(),
-                    name: "PipeWire Nodes".into(),
-                    title: None,
-                    description: Some(
+                Resource::new("pawlsa://alsa/cards", "ALSA Sound Cards")
+                    .with_description("All ALSA sound cards with index, name, and longname")
+                    .with_mime_type("text/plain"),
+                Resource::new("pawlsa://alsa/midi/ports", "MIDI Sequencer Clients/Ports")
+                    .with_description(
+                        "ALSA sequencer clients and their ports with capabilities and type flags",
+                    )
+                    .with_mime_type("text/plain"),
+                Resource::new("pawlsa://pw/nodes", "PipeWire Nodes")
+                    .with_description(
                         "All PipeWire nodes with state, port counts, and properties \
-                         (media.class, node.name, node.description, etc.)"
-                            .into(),
-                    ),
-                    mime_type: Some("text/plain".into()),
-                    size: None,
-                    icons: None,
-                }
-                .no_annotation(),
-                RawResource {
-                    uri: "pawlsa://pw/ports".into(),
-                    name: "PipeWire Ports".into(),
-                    title: None,
-                    description: Some(
-                        "All PipeWire ports with node_id, direction, and properties".into(),
-                    ),
-                    mime_type: Some("text/plain".into()),
-                    size: None,
-                    icons: None,
-                }
-                .no_annotation(),
-                RawResource {
-                    uri: "pawlsa://pw/links".into(),
-                    name: "PipeWire Links".into(),
-                    title: None,
-                    description: Some(
-                        "Active PipeWire links showing output/input node and port IDs with state"
-                            .into(),
-                    ),
-                    mime_type: Some("text/plain".into()),
-                    size: None,
-                    icons: None,
-                }
-                .no_annotation(),
-                RawResource {
-                    uri: "pawlsa://pw/metadata".into(),
-                    name: "PipeWire Metadata".into(),
-                    title: None,
-                    description: Some(
-                        "PipeWire metadata objects (default endpoints, route settings)"
-                            .into(),
-                    ),
-                    mime_type: Some("text/plain".into()),
-                    size: None,
-                    icons: None,
-                }
-                .no_annotation(),
-                RawResource {
-                    uri: "pawlsa://pw/devices".into(),
-                    name: "PipeWire Devices".into(),
-                    title: None,
-                    description: Some(
-                        "PipeWire devices with active profile and available profiles/routes"
-                            .into(),
-                    ),
-                    mime_type: Some("text/plain".into()),
-                    size: None,
-                    icons: None,
-                }
-                .no_annotation(),
+                         (media.class, node.name, node.description, etc.)",
+                    )
+                    .with_mime_type("text/plain"),
+                Resource::new("pawlsa://pw/ports", "PipeWire Ports")
+                    .with_description(
+                        "All PipeWire ports with node_id, direction, and properties",
+                    )
+                    .with_mime_type("text/plain"),
+                Resource::new("pawlsa://pw/links", "PipeWire Links")
+                    .with_description(
+                        "Active PipeWire links showing output/input node and port IDs with state",
+                    )
+                    .with_mime_type("text/plain"),
+                Resource::new("pawlsa://pw/metadata", "PipeWire Metadata")
+                    .with_description(
+                        "PipeWire metadata objects (default endpoints, route settings)",
+                    )
+                    .with_mime_type("text/plain"),
+                Resource::new("pawlsa://pw/devices", "PipeWire Devices")
+                    .with_description(
+                        "PipeWire devices with active profile and available profiles/routes",
+                    )
+                    .with_mime_type("text/plain"),
             ];
-            Ok(ListResourcesResult {
-                resources,
-                next_cursor: None,
-            })
+            Ok(ListResourcesResult::with_all_items(resources))
         }
     }
 
     fn list_resource_templates(
         &self,
-        _request: Option<PaginatedRequestParam>,
+        _request: Option<PaginatedRequestParams>,
         _context: rmcp::service::RequestContext<rmcp::service::RoleServer>,
     ) -> impl Future<Output = Result<ListResourceTemplatesResult, ErrorData>> + Send + '_ {
         async {
             let templates = vec![
-                RawResourceTemplate {
-                    uri_template: "pawlsa://alsa/cards/{index}".to_string(),
-                    name: "ALSA Card Detail".to_string(),
-                    title: None,
-                    description: Some("Detail for ALSA card N (PCM devices, controls)".to_string()),
-                    mime_type: Some("text/plain".to_string()),
-                }
-                .no_annotation(),
-                RawResourceTemplate {
-                    uri_template: "pawlsa://alsa/devices/{category}".to_string(),
-                    name: "ALSA Device Hints".to_string(),
-                    title: None,
-                    description: Some(
-                        "Device hints for category (pcm, rawmidi, seq, ctl)".to_string(),
-                    ),
-                    mime_type: Some("text/plain".to_string()),
-                }
-                .no_annotation(),
-                RawResourceTemplate {
-                    uri_template: "pawlsa://alsa/mixer/{card_index}".to_string(),
-                    name: "ALSA Mixer Elements".to_string(),
-                    title: None,
-                    description: Some(
-                        "Mixer elements (volume, mute, switches) for a card".to_string(),
-                    ),
-                    mime_type: Some("text/plain".to_string()),
-                }
-                .no_annotation(),
-                RawResourceTemplate {
-                    uri_template: "pawlsa://pw/nodes/{id}".to_string(),
-                    name: "PipeWire Node Detail".to_string(),
-                    title: None,
-                    description: Some("Detail for a specific PipeWire node".to_string()),
-                    mime_type: Some("text/plain".to_string()),
-                }
-                .no_annotation(),
-                RawResourceTemplate {
-                    uri_template: "pawlsa://pw/metadata/{id}".to_string(),
-                    name: "PipeWire Metadata Detail".to_string(),
-                    title: None,
-                    description: Some(
-                        "All properties for a specific PipeWire metadata object".to_string(),
-                    ),
-                    mime_type: Some("application/json".to_string()),
-                }
-                .no_annotation(),
-                RawResourceTemplate {
-                    uri_template: "pawlsa://pw/devices/{id}".to_string(),
-                    name: "PipeWire Device Detail".to_string(),
-                    title: None,
-                    description: Some(
-                        "Detail for a PipeWire device with profiles and routes".to_string(),
-                    ),
-                    mime_type: Some("text/plain".to_string()),
-                }
-                .no_annotation(),
+                ResourceTemplate::new("pawlsa://alsa/cards/{index}", "ALSA Card Detail")
+                    .with_description("Detail for ALSA card N (PCM devices, controls)")
+                    .with_mime_type("text/plain"),
+                ResourceTemplate::new("pawlsa://alsa/devices/{category}", "ALSA Device Hints")
+                    .with_description("Device hints for category (pcm, rawmidi, seq, ctl)")
+                    .with_mime_type("text/plain"),
+                ResourceTemplate::new("pawlsa://alsa/mixer/{card_index}", "ALSA Mixer Elements")
+                    .with_description("Mixer elements (volume, mute, switches) for a card")
+                    .with_mime_type("text/plain"),
+                ResourceTemplate::new("pawlsa://pw/nodes/{id}", "PipeWire Node Detail")
+                    .with_description("Detail for a specific PipeWire node")
+                    .with_mime_type("text/plain"),
+                ResourceTemplate::new("pawlsa://pw/metadata/{id}", "PipeWire Metadata Detail")
+                    .with_description("All properties for a specific PipeWire metadata object")
+                    .with_mime_type("application/json"),
+                ResourceTemplate::new("pawlsa://pw/devices/{id}", "PipeWire Device Detail")
+                    .with_description("Detail for a PipeWire device with profiles and routes")
+                    .with_mime_type("text/plain"),
             ];
-            Ok(ListResourceTemplatesResult {
-                resource_templates: templates,
-                next_cursor: None,
-            })
+            Ok(ListResourceTemplatesResult::with_all_items(templates))
         }
     }
 
     fn read_resource(
         &self,
-        request: ReadResourceRequestParam,
+        request: ReadResourceRequestParams,
         _context: rmcp::service::RequestContext<rmcp::service::RoleServer>,
-    ) -> impl Future<Output = Result<ReadResourceResult, ErrorData>> + Send + '_ {
+    ) -> impl Future<Output = Result<ReadResourceResponse, ErrorData>> + Send + '_ {
         async move {
             let uri = &request.uri;
             let path = uri.strip_prefix("pawlsa://").ok_or_else(|| {
@@ -752,9 +606,9 @@ impl ServerHandler for PawlsaServer {
             })?;
 
             if let Some(alsa_path) = path.strip_prefix("alsa/") {
-                self.read_alsa_resource(alsa_path).await
+                self.read_alsa_resource(alsa_path).await.map(Into::into)
             } else if let Some(pw_path) = path.strip_prefix("pw/") {
-                self.read_pw_resource(pw_path)
+                self.read_pw_resource(pw_path).map(Into::into)
             } else {
                 Err(ErrorData::resource_not_found(
                     format!("unknown resource: {uri}"),
@@ -766,7 +620,7 @@ impl ServerHandler for PawlsaServer {
 
     fn list_tools(
         &self,
-        _request: Option<PaginatedRequestParam>,
+        _request: Option<PaginatedRequestParams>,
         _context: rmcp::service::RequestContext<rmcp::service::RoleServer>,
     ) -> impl Future<Output = Result<ListToolsResult, ErrorData>> + Send + '_ {
         async {
@@ -972,22 +826,19 @@ impl ServerHandler for PawlsaServer {
                         .open_world(false),
                 ),
             ];
-            Ok(ListToolsResult {
-                tools,
-                next_cursor: None,
-            })
+            Ok(ListToolsResult::with_all_items(tools))
         }
     }
 
     fn call_tool(
         &self,
-        request: CallToolRequestParam,
+        request: CallToolRequestParams,
         _context: rmcp::service::RequestContext<rmcp::service::RoleServer>,
-    ) -> impl Future<Output = Result<CallToolResult, ErrorData>> + Send + '_ {
+    ) -> impl Future<Output = Result<CallToolResponse, ErrorData>> + Send + '_ {
         async move {
             let args = serde_json::Value::Object(request.arguments.unwrap_or_default());
 
-            match request.name.as_ref() {
+            let result: Result<CallToolResult, ErrorData> = match request.name.as_ref() {
                 "pw_link_create" => self.tool_pw_link_create(&args).await,
                 "pw_link_destroy" => self.tool_pw_link_destroy(&args).await,
                 "mixer_set_volume" => self.tool_mixer_set_volume(&args),
@@ -1002,7 +853,8 @@ impl ServerHandler for PawlsaServer {
                     format!("unknown tool: {}", request.name),
                     None,
                 )),
-            }
+            };
+            result.map(Into::into)
         }
     }
 }

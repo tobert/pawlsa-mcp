@@ -1,16 +1,16 @@
 [package]
 name = "pawlsa-mcp"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 
 [dependencies]
-rmcp = { version = "0.8", features = ["server", "transport-io"] }
+rmcp = { version = "3.1", features = ["server", "transport-io"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-alsa = "0.11"
-pipewire = "0.9"
+alsa = "0.12"
+pipewire = "0.10"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow = "1"
-base64 = "0.22"
+base64 = "0.23"
